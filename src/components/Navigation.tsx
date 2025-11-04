@@ -5,6 +5,7 @@ import {
   Sliders,
   BookOpen,
   History,
+  BarChart3,
   Settings,
 } from 'lucide-react'
 import { useConnectionStore } from '../stores/connectionStore'
@@ -18,6 +19,7 @@ export default function Navigation() {
     { to: '/control', icon: Sliders, label: 'Control' },
     { to: '/recipes', icon: BookOpen, label: 'Recipes' },
     { to: '/history', icon: History, label: 'History' },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ]
 
