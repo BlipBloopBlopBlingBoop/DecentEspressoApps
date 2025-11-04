@@ -11,19 +11,26 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0",
-    "zustand": "^4.5.2",
+    "@visx/visx": "^3.12.0",
     "chart.js": "^4.4.3",
-    "react-chartjs-2": "^5.2.0",
+    "d3": "^7.9.0",
     "date-fns": "^3.6.0",
+    "framer-motion": "^12.23.24",
     "idb": "^8.0.0",
-    "lucide-react": "^0.428.0"
+    "lucide-react": "^0.428.0",
+    "plotly.js-dist-min": "^3.2.0",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
+    "react-plotly.js": "^2.6.0",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^3.3.0",
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/react-plotly.js": "^2.6.3",
     "@typescript-eslint/eslint-plugin": "^7.13.1",
     "@typescript-eslint/parser": "^7.13.1",
     "@vitejs/plugin-react": "^4.3.1",

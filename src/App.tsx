@@ -7,6 +7,7 @@ import ControlPage from './pages/ControlPage'
 import RecipesPage from './pages/RecipesPage'
 import HistoryPage from './pages/HistoryPage'
 import SettingsPage from './pages/SettingsPage'
+import AnalyticsPage from './pages/AnalyticsPage'
 
 function App() {
   const isConnected = useConnectionStore((state) => state.connected)
@@ -23,6 +24,7 @@ function App() {
           <Route path="control" element={<ControlPage />} />
           <Route path="recipes" element={<RecipesPage />} />
           <Route path="history" element={<HistoryPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

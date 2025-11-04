@@ -4,11 +4,13 @@ import { databaseService } from '../services/databaseService'
 import { Recipe } from '../types/decent'
 import { Plus, Star, Clock, Search, Trash2, Edit, Play } from 'lucide-react'
 import { formatDate } from '../utils/formatters'
+import RecipeBuilder from '../components/RecipeBuilder'
 
 export default function RecipesPage() {
   const { recipes, activeRecipe, setActiveRecipe } = useRecipeStore()
   const [searchQuery, setSearchQuery] = useState('')
-  const [showNewRecipe, setShowNewRecipe] = useState(false)
+  const [showRecipeBuilder, setShowRecipeBuilder] = useState(false)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | undefined>(undefined)
   const [filter, setFilter] = useState<'all' | 'favorites'>('all')
 
   useEffect(() => {
@@ -47,7 +49,10 @@ export default function RecipesPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-white">Recipes</h1>
           <button
-            onClick={() => setShowNewRecipe(true)}
+            onClick={() => {
+              setEditingRecipe(undefined)
+              setShowRecipeBuilder(true)
+            }}
             className="p-2 bg-decent-blue hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
             <Plus className="w-5 h-5" />
@@ -89,7 +94,10 @@ export default function RecipesPage() {
           <div className="text-center py-12">
             <p className="text-gray-500">No recipes found</p>
             <button
-              onClick={() => setShowNewRecipe(true)}
+              onClick={() => {
+                setEditingRecipe(undefined)
+                setShowRecipeBuilder(true)
+              }}
               className="mt-4 px-4 py-2 bg-decent-blue hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
               Create Your First Recipe
@@ -102,14 +110,36 @@ export default function RecipesPage() {
               recipe={recipe}
               isActive={activeRecipe?.id === recipe.id}
               onSelect={() => setActiveRecipe(recipe)}
+              onEdit={(recipe) => {
+                setEditingRecipe(recipe)
+                setShowRecipeBuilder(true)
+              }}
             />
           ))
         )}
       </div>
 
-      {/* New Recipe Modal */}
-      {showNewRecipe && (
-        <NewRecipeModal onClose={() => setShowNewRecipe(false)} />
+      {/* Recipe Builder Modal */}
+      {showRecipeBuilder && (
+        <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto">
+          <RecipeBuilder
+            recipe={editingRecipe}
+            onSave={async (recipe) => {
+              if (editingRecipe) {
+                useRecipeStore.getState().updateRecipe(recipe.id, recipe)
+              } else {
+                useRecipeStore.getState().addRecipe(recipe)
+              }
+              await databaseService.saveRecipe(recipe)
+              setShowRecipeBuilder(false)
+              setEditingRecipe(undefined)
+            }}
+            onCancel={() => {
+              setShowRecipeBuilder(false)
+              setEditingRecipe(undefined)
+            }}
+          />
+        </div>
       )}
     </div>
   )
@@ -141,9 +171,10 @@ interface RecipeCardProps {
   recipe: Recipe
   isActive: boolean
   onSelect: () => void
+  onEdit: (recipe: Recipe) => void
 }
 
-function RecipeCard({ recipe, isActive, onSelect }: RecipeCardProps) {
+function RecipeCard({ recipe, isActive, onSelect, onEdit }: RecipeCardProps) {
   const recipeStore = useRecipeStore()
 
   const handleToggleFavorite = async (e: React.MouseEvent) => {
@@ -240,7 +271,7 @@ function RecipeCard({ recipe, isActive, onSelect }: RecipeCardProps) {
         <button
           onClick={(e) => {
             e.stopPropagation()
-            // TODO: Open edit modal
+            onEdit(recipe)
           }}
           className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
         >
@@ -252,119 +283,6 @@ function RecipeCard({ recipe, isActive, onSelect }: RecipeCardProps) {
         >
           <Trash2 className="w-4 h-4" />
         </button>
-      </div>
-    </div>
-  )
-}
-
-function NewRecipeModal({ onClose }: { onClose: () => void }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [author, setAuthor] = useState('')
-
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      alert('Please enter a recipe name')
-      return
-    }
-
-    const newRecipe: Recipe = {
-      id: `recipe-${Date.now()}`,
-      name: name.trim(),
-      description: description.trim() || undefined,
-      author: author.trim() || undefined,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      steps: [
-        // Default simple profile
-        {
-          name: 'Pre-infusion',
-          temperature: 93,
-          pressure: 2,
-          flow: 2,
-          transition: 'smooth',
-          exit: { type: 'time', value: 8 },
-        },
-        {
-          name: 'Ramp',
-          temperature: 93,
-          pressure: 9,
-          flow: 2,
-          transition: 'smooth',
-          exit: { type: 'time', value: 5 },
-        },
-        {
-          name: 'Main',
-          temperature: 93,
-          pressure: 9,
-          flow: 2,
-          transition: 'smooth',
-          exit: { type: 'time', value: 25 },
-        },
-      ],
-      targetWeight: 36,
-    }
-
-    useRecipeStore.getState().addRecipe(newRecipe)
-    await databaseService.saveRecipe(newRecipe)
-
-    onClose()
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full space-y-4">
-        <h2 className="text-xl font-bold text-white">New Recipe</h2>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">Recipe Name *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Classic Espresso"
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-decent-blue"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description..."
-              rows={3}
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-decent-blue resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">Author</label>
-            <input
-              type="text"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Your name"
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-decent-blue"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            className="flex-1 py-3 bg-decent-blue hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-          >
-            Create
-          </button>
-        </div>
       </div>
     </div>
   )
