@@ -2,6 +2,17 @@
 
 A fully-functional mobile web application for controlling Decent espresso machines via Bluetooth. This app provides comprehensive control over all machine functions, real-time data visualization, recipe management, and shot history tracking.
 
+## 🚀 Quick Deploy
+
+**Deploy your app in 2 minutes (FREE!):**
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/BlipBloopBlopBlingBoop/deepdoopdop)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/BlipBloopBlopBlingBoop/deepdoopdop)
+
+**📖 Need help?** See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+---
+
 ## Features
 
 ### 🔌 Bluetooth Connectivity
