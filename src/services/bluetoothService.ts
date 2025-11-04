@@ -222,7 +222,7 @@ class BluetoothService {
    * Start espresso extraction
    */
   async startEspresso(): Promise<void> {
-    await this.sendCommand(DecentCommand.START_ESPRESSO)
+    await this.sendCommand(DecentCommand.ESPRESSO)
 
     const shotStore = useShotStore.getState()
     const recipeStore = useRecipeStore.getState()
@@ -235,10 +235,10 @@ class BluetoothService {
   }
 
   /**
-   * Stop current operation
+   * Stop current operation (go to idle)
    */
   async stop(): Promise<void> {
-    await this.sendCommand(DecentCommand.STOP)
+    await this.sendCommand(DecentCommand.IDLE)
 
     const shotStore = useShotStore.getState()
     if (shotStore.isRecording) {
@@ -250,31 +250,31 @@ class BluetoothService {
    * Start steam mode
    */
   async startSteam(): Promise<void> {
-    await this.sendCommand(DecentCommand.START_STEAM)
+    await this.sendCommand(DecentCommand.STEAM)
   }
 
   /**
    * Start flush
    */
   async startFlush(): Promise<void> {
-    await this.sendCommand(DecentCommand.START_FLUSH)
+    await this.sendCommand(DecentCommand.HOT_WATER_RINSE)
   }
 
   /**
    * Start water dispense
    */
   async startWater(): Promise<void> {
-    await this.sendCommand(DecentCommand.START_WATER)
+    await this.sendCommand(DecentCommand.HOT_WATER)
   }
 
   /**
    * Set target temperature
+   * Note: Temperature setting via WriteToMMR requires MMR protocol
+   * This is a placeholder - full implementation requires MMR writes
    */
-  async setTemperature(temperature: number): Promise<void> {
-    const data = new Uint8Array(4)
-    const view = new DataView(data.buffer)
-    view.setFloat32(0, temperature, true)
-    await this.sendCommand(DecentCommand.SET_TEMPERATURE, data)
+  async setTemperature(_temperature: number): Promise<void> {
+    console.warn('Temperature setting requires MMR protocol - not yet implemented')
+    // TODO: Implement MMR write for temperature control
   }
 
   /**

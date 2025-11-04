@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConnectionStore } from '../stores/connectionStore'
 import { bluetoothService } from '../services/bluetoothService'
+import { demoService } from '../services/demoService'
 import {
   Wifi,
   AlertCircle,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   HelpCircle,
   Bluetooth,
+  Beaker,
 } from 'lucide-react'
 
 export default function ConnectionPage() {
@@ -25,8 +27,21 @@ export default function ConnectionPage() {
     }
   }
 
+  const handleDemoMode = async () => {
+    try {
+      await demoService.startDemo()
+      navigate('/dashboard')
+    } catch (error) {
+      console.error('Demo mode failed:', error)
+    }
+  }
+
   const handleDisconnect = async () => {
-    await bluetoothService.disconnect()
+    if (demoService.isActive()) {
+      demoService.stopDemo()
+    } else {
+      await bluetoothService.disconnect()
+    }
   }
 
   if (connected) {
@@ -113,6 +128,25 @@ export default function ConnectionPage() {
               </>
             )}
           </button>
+
+          {/* Demo Mode Button */}
+          <button
+            onClick={handleDemoMode}
+            disabled={connecting}
+            className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <Beaker className="w-5 h-5" />
+            Try Demo Mode
+          </button>
+
+          {/* Demo Mode Info */}
+          <div className="bg-purple-900/20 border border-purple-800 rounded-lg p-3 flex items-start gap-2">
+            <Beaker className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-purple-300">
+              <strong>Demo Mode:</strong> Test all features without a physical machine.
+              Simulates real espresso extraction with live data.
+            </div>
+          </div>
 
           {/* Troubleshooting */}
           <button

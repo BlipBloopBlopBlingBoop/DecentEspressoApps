@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useMachineStore } from '../stores/machineStore'
 import { useRecipeStore } from '../stores/recipeStore'
+import { useShotStore } from '../stores/shotStore'
 import { bluetoothService } from '../services/bluetoothService'
+import { demoService } from '../services/demoService'
 import {
   Play,
   Square,
@@ -18,9 +20,22 @@ export default function ControlPage() {
   const [targetTemp, setTargetTemp] = useState(settings.targetEspressoTemp)
   const [showConfirm, setShowConfirm] = useState<string | null>(null)
 
+  const isDemoMode = demoService.isActive()
+
   const handleStartEspresso = async () => {
     try {
-      await bluetoothService.startEspresso()
+      if (isDemoMode) {
+        // Start shot recording
+        const shotStore = useShotStore.getState()
+        shotStore.startShot({
+          profileName: activeRecipe?.name || 'Manual',
+          profileId: activeRecipe?.id,
+          startTime: Date.now(),
+        })
+        demoService.simulateStartEspresso()
+      } else {
+        await bluetoothService.startEspresso()
+      }
       setShowConfirm(null)
     } catch (error) {
       console.error('Failed to start espresso:', error)
@@ -30,7 +45,16 @@ export default function ControlPage() {
 
   const handleStop = async () => {
     try {
-      await bluetoothService.stop()
+      if (isDemoMode) {
+        demoService.simulateStop()
+        // End shot recording if active
+        const shotStore = useShotStore.getState()
+        if (shotStore.isRecording) {
+          shotStore.endShot(state?.weight)
+        }
+      } else {
+        await bluetoothService.stop()
+      }
     } catch (error) {
       console.error('Failed to stop:', error)
     }
@@ -38,7 +62,11 @@ export default function ControlPage() {
 
   const handleStartSteam = async () => {
     try {
-      await bluetoothService.startSteam()
+      if (isDemoMode) {
+        demoService.simulateStartSteam()
+      } else {
+        await bluetoothService.startSteam()
+      }
       setShowConfirm(null)
     } catch (error) {
       console.error('Failed to start steam:', error)
@@ -48,7 +76,11 @@ export default function ControlPage() {
 
   const handleStartFlush = async () => {
     try {
-      await bluetoothService.startFlush()
+      if (isDemoMode) {
+        demoService.simulateFlush()
+      } else {
+        await bluetoothService.startFlush()
+      }
       setShowConfirm(null)
     } catch (error) {
       console.error('Failed to start flush:', error)
@@ -57,7 +89,11 @@ export default function ControlPage() {
 
   const handleStartWater = async () => {
     try {
-      await bluetoothService.startWater()
+      if (isDemoMode) {
+        // Demo water not implemented yet
+      } else {
+        await bluetoothService.startWater()
+      }
       setShowConfirm(null)
     } catch (error) {
       console.error('Failed to start water:', error)
