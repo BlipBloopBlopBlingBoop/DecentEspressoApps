@@ -15,12 +15,29 @@ class BluetoothService {
   private server: BluetoothRemoteGATTServer | null = null
   private characteristics: Map<string, BluetoothRemoteGATTCharacteristic> = new Map()
   private dataUpdateInterval: number | null = null
+  private readonly READ_TIMEOUT_MS = 5000 // 5 second timeout for reads
+  private readonly INITIAL_STATE_TIMEOUT_MS = 10000 // 10 second timeout for initial connection
 
   /**
    * Check if Web Bluetooth is supported
    */
   isSupported(): boolean {
     return 'bluetooth' in navigator
+  }
+
+  /**
+   * Wrapper to add timeout to Bluetooth read operations
+   */
+  private async readWithTimeout(
+    characteristic: BluetoothRemoteGATTCharacteristic,
+    timeoutMs: number = this.READ_TIMEOUT_MS
+  ): Promise<DataView> {
+    return Promise.race([
+      characteristic.readValue(),
+      new Promise<DataView>((_, reject) =>
+        setTimeout(() => reject(new Error('Bluetooth read timeout - machine not responding')), timeoutMs)
+      )
+    ])
   }
 
   /**
@@ -64,6 +81,9 @@ class BluetoothService {
 
       // Start listening to notifications
       await this.setupNotifications()
+
+      // Verify we can get initial machine state before marking as connected
+      await this.verifyInitialState()
 
       connectionStore.setConnected(true)
       connectionStore.updateLastConnected()
@@ -137,6 +157,32 @@ class BluetoothService {
       } catch (error) {
         console.warn('Could not setup state notifications:', error)
       }
+    }
+  }
+
+  /**
+   * Verify that we can get initial state from the machine
+   * This prevents the "waiting for machine info" freeze
+   */
+  private async verifyInitialState(): Promise<void> {
+    const stateChar = this.characteristics.get('STATE_INFO')
+
+    if (!stateChar) {
+      throw new Error('STATE_INFO characteristic not available')
+    }
+
+    try {
+      // Try to read initial state with extended timeout
+      const value = await this.readWithTimeout(stateChar, this.INITIAL_STATE_TIMEOUT_MS)
+      const state = this.parseStateData(value)
+      useMachineStore.getState().setState(state)
+      console.log('Initial machine state received:', state.state)
+    } catch (error) {
+      console.error('Failed to get initial machine state:', error)
+      throw new Error(
+        'Unable to retrieve machine information. Please ensure the machine is powered on and ready. ' +
+        'Try power cycling the machine and reconnecting.'
+      )
     }
   }
 
@@ -328,11 +374,15 @@ class BluetoothService {
     if (!stateChar) return
 
     try {
-      const value = await stateChar.readValue()
+      const value = await this.readWithTimeout(stateChar)
       const state = this.parseStateData(value)
       useMachineStore.getState().setState(state)
     } catch (error) {
       // Silently fail - notifications should handle updates
+      // Only log if it's not a timeout (timeouts are expected if notifications work)
+      if (error instanceof Error && !error.message.includes('timeout')) {
+        console.warn('State update failed:', error)
+      }
     }
   }
 
