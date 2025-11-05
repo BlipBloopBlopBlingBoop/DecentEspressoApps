@@ -9,6 +9,8 @@ import {
 import { useConnectionStore } from '../stores/connectionStore'
 import { useMachineStore } from '../stores/machineStore'
 import { useShotStore } from '../stores/shotStore'
+import { useRecipeStore } from '../stores/recipeStore'
+import { parseShotSample, parseStateInfo, mapStateToType } from '../utils/decentProtocol'
 
 class BluetoothService {
   private device: BluetoothDevice | null = null
@@ -36,14 +38,20 @@ class BluetoothService {
         throw new Error('Web Bluetooth is not supported in this browser')
       }
 
-      // Request device
+      console.log('Requesting Decent device...')
+
+      // Request device - DE1 machines advertise with namePrefix "DE1"
       this.device = await navigator.bluetooth.requestDevice({
         filters: [
-          { namePrefix: 'DE1' },
-          { services: [DECENT_SERVICE_UUID] }
+          {
+            namePrefix: 'DE1',
+            services: [DECENT_SERVICE_UUID]
+          }
         ],
         optionalServices: [DECENT_SERVICE_UUID]
       })
+
+      console.log('Device selected:', this.device.name)
 
       if (!this.device.gatt) {
         throw new Error('GATT not available on device')
@@ -53,23 +61,26 @@ class BluetoothService {
       this.device.addEventListener('gattserverdisconnected', this.onDisconnected.bind(this))
 
       // Connect to GATT server
+      console.log('Connecting to GATT server...')
       this.server = await this.device.gatt.connect()
       connectionStore.setDeviceName(this.device.name || 'Decent Machine')
 
       // Get primary service
+      console.log('Getting primary service...')
       const service = await this.server.getPrimaryService(DECENT_SERVICE_UUID)
 
       // Get all characteristics
+      console.log('Setting up characteristics...')
       await this.setupCharacteristics(service)
 
       // Start listening to notifications
+      console.log('Setting up notifications...')
       await this.setupNotifications()
 
       connectionStore.setConnected(true)
       connectionStore.updateLastConnected()
 
-      // Start periodic data updates
-      this.startDataUpdates()
+      console.log('Connected successfully!')
 
       return {
         id: this.device.id,
@@ -79,7 +90,9 @@ class BluetoothService {
         server: this.server,
       }
     } catch (error) {
+      console.error('Connection error:', error)
       connectionStore.setError(this.getErrorMessage(error))
+      connectionStore.setConnecting(false)
       throw error
     }
   }
@@ -114,6 +127,7 @@ class BluetoothService {
         try {
           const characteristic = await service.getCharacteristic(uuid)
           this.characteristics.set(name, characteristic)
+          console.log(`Got characteristic: ${name}`)
         } catch (error) {
           console.warn(`Could not get characteristic ${name}:`, error)
         }
@@ -128,15 +142,77 @@ class BluetoothService {
    * Setup notifications for real-time data
    */
   private async setupNotifications(): Promise<void> {
+    // STATE_INFO - Machine state changes
     const stateChar = this.characteristics.get('STATE_INFO')
-
     if (stateChar) {
       try {
         await stateChar.startNotifications()
         stateChar.addEventListener('characteristicvaluechanged', this.handleStateUpdate.bind(this))
+        console.log('STATE_INFO notifications enabled')
       } catch (error) {
         console.warn('Could not setup state notifications:', error)
       }
+    }
+
+    // SHOT_SAMPLE - Real-time shot data (THIS IS CRITICAL!)
+    const shotChar = this.characteristics.get('SHOT_SAMPLE')
+    if (shotChar) {
+      try {
+        await shotChar.startNotifications()
+        shotChar.addEventListener('characteristicvaluechanged', this.handleShotSample.bind(this))
+        console.log('SHOT_SAMPLE notifications enabled')
+      } catch (error) {
+        console.warn('Could not setup shot sample notifications:', error)
+      }
+    } else {
+      console.error('SHOT_SAMPLE characteristic not found!')
+    }
+  }
+
+  /**
+   * Handle shot sample updates (real-time data)
+   */
+  private handleShotSample(event: Event): void {
+    const characteristic = event.target as BluetoothRemoteGATTCharacteristic
+    const value = characteristic.value
+
+    if (!value) return
+
+    try {
+      const data = parseShotSample(value)
+
+      // Update machine store with current readings
+      const machineStore = useMachineStore.getState()
+      const currentState = machineStore.state
+
+      machineStore.setState({
+        state: currentState?.state || 'idle',
+        substate: currentState?.substate || '',
+        temperature: {
+          mix: data.mixTemp,
+          head: data.headTemp,
+          steam: data.steamTemp,
+          target: data.setMixTemp,
+        },
+        pressure: data.groupPressure,
+        flow: data.groupFlow,
+        weight: currentState?.weight || 0,
+        timestamp: Date.now(),
+      })
+
+      // If recording a shot, add data point
+      const shotStore = useShotStore.getState()
+      if (shotStore.isRecording) {
+        shotStore.addDataPoint({
+          timestamp: Date.now() - (shotStore.activeShot?.startTime || Date.now()),
+          temperature: data.mixTemp,
+          pressure: data.groupPressure,
+          flow: data.groupFlow,
+          weight: 0, // TODO: Get from scale
+        })
+      }
+    } catch (error) {
+      console.error('Error parsing shot sample:', error)
     }
   }
 
@@ -150,19 +226,37 @@ class BluetoothService {
     if (!value) return
 
     try {
-      const state = this.parseStateData(value)
-      useMachineStore.getState().setState(state)
+      const data = parseStateInfo(value)
+      const stateType = mapStateToType(data.state)
 
-      // If recording a shot, add data point
+      const machineStore = useMachineStore.getState()
+      const currentState = machineStore.state
+
+      machineStore.setState({
+        state: stateType as MachineState['state'],
+        substate: data.substate.toString(),
+        temperature: currentState?.temperature || { mix: 0, head: 0, steam: 0, target: 0 },
+        pressure: currentState?.pressure || 0,
+        flow: currentState?.flow || 0,
+        weight: currentState?.weight || 0,
+        timestamp: Date.now(),
+      })
+
+      console.log(`State changed: ${stateType} (${data.state}:${data.substate})`)
+
+      // Handle shot recording based on state
       const shotStore = useShotStore.getState()
-      if (shotStore.isRecording && state.state === 'brewing') {
-        shotStore.addDataPoint({
-          timestamp: Date.now() - (shotStore.activeShot?.startTime || Date.now()),
-          temperature: state.temperature.mix,
-          pressure: state.pressure,
-          flow: state.flow,
-          weight: state.weight,
+      if (stateType === 'brewing' && !shotStore.isRecording) {
+        // Auto-start recording on brew
+        const recipeStore = useRecipeStore.getState()
+        shotStore.startShot({
+          profileName: recipeStore.activeRecipe?.name || 'Manual',
+          profileId: recipeStore.activeRecipe?.id,
+          startTime: Date.now(),
         })
+      } else if (stateType !== 'brewing' && shotStore.isRecording) {
+        // Auto-stop recording when brew ends
+        shotStore.endShot()
       }
     } catch (error) {
       console.error('Error parsing state data:', error)
@@ -170,40 +264,10 @@ class BluetoothService {
   }
 
   /**
-   * Parse state data from DataView
-   */
-  private parseStateData(dataView: DataView): MachineState {
-    // This is a simplified parser - actual implementation would depend on
-    // the Decent machine's exact data format
-    return {
-      state: this.parseMachineState(dataView.getUint8(0)),
-      substate: dataView.getUint8(1).toString(),
-      temperature: {
-        mix: dataView.getFloat32(2, true),
-        head: dataView.getFloat32(6, true),
-        steam: dataView.getFloat32(10, true),
-        target: dataView.getFloat32(14, true),
-      },
-      pressure: dataView.getFloat32(18, true),
-      flow: dataView.getFloat32(22, true),
-      weight: dataView.getFloat32(26, true),
-      timestamp: Date.now(),
-    }
-  }
-
-  /**
-   * Parse machine state byte
-   */
-  private parseMachineState(byte: number): MachineState['state'] {
-    const states = ['idle', 'sleep', 'warming', 'ready', 'brewing', 'steam', 'flush', 'cleaning', 'error']
-    return (states[byte] || 'idle') as MachineState['state']
-  }
-
-  /**
    * Send a command to the machine
    */
   async sendCommand(command: DecentCommand, data?: Uint8Array): Promise<void> {
-    const commandChar = this.characteristics.get('COMMAND')
+    const commandChar = this.characteristics.get('REQUESTED_STATE')
 
     if (!commandChar) {
       throw new Error('Command characteristic not available')
@@ -215,6 +279,7 @@ class BluetoothService {
       buffer.set(data, 1)
     }
 
+    console.log(`Sending command: ${command}`)
     await commandChar.writeValue(buffer)
   }
 
@@ -280,60 +345,10 @@ class BluetoothService {
   /**
    * Upload a shot profile to the machine
    */
-  async uploadProfile(profile: ShotProfile): Promise<void> {
-    const profileChar = this.characteristics.get('SHOT_PROFILE')
-
-    if (!profileChar) {
-      throw new Error('Profile characteristic not available')
-    }
-
-    // Convert profile to binary format (simplified - actual format depends on machine)
-    const profileData = this.encodeProfile(profile)
-    await profileChar.writeValue(profileData as BufferSource)
-  }
-
-  /**
-   * Encode profile to binary format
-   */
-  private encodeProfile(profile: ShotProfile): Uint8Array {
-    // This is a placeholder - actual encoding depends on Decent's protocol
-    const encoder = new TextEncoder()
-    return encoder.encode(JSON.stringify(profile))
-  }
-
-  /**
-   * Start periodic data updates
-   */
-  private startDataUpdates(): void {
-    // Poll for data every 100ms when connected
-    this.dataUpdateInterval = window.setInterval(async () => {
-      if (!this.server?.connected) {
-        if (this.dataUpdateInterval) {
-          clearInterval(this.dataUpdateInterval)
-        }
-        return
-      }
-
-      // Request current state if notifications aren't working
-      await this.requestStateUpdate()
-    }, 100)
-  }
-
-  /**
-   * Request state update from machine
-   */
-  private async requestStateUpdate(): Promise<void> {
-    const stateChar = this.characteristics.get('STATE_INFO')
-
-    if (!stateChar) return
-
-    try {
-      const value = await stateChar.readValue()
-      const state = this.parseStateData(value)
-      useMachineStore.getState().setState(state)
-    } catch (error) {
-      // Silently fail - notifications should handle updates
-    }
+  async uploadProfile(_profile: ShotProfile): Promise<void> {
+    console.warn('Profile upload not yet implemented - requires full protocol')
+    // TODO: Implement profile upload via HEADER_WRITE and FRAME_WRITE characteristics
+    // This requires understanding the full profile binary format
   }
 
   /**
@@ -375,6 +390,3 @@ class BluetoothService {
 
 // Export singleton instance
 export const bluetoothService = new BluetoothService()
-
-// Import statement that was missing
-import { useRecipeStore } from '../stores/recipeStore'
