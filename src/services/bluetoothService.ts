@@ -6,6 +6,7 @@ import {
   DECENT_CHARACTERISTICS,
   ShotProfile,
 } from '../types/decent'
+import { parseStateInfo, parseShotSample, mapStateToType } from '../utils/decentProtocol'
 import { useConnectionStore } from '../stores/connectionStore'
 import { useMachineStore } from '../stores/machineStore'
 import { useShotStore } from '../stores/shotStore'
@@ -149,13 +150,27 @@ class BluetoothService {
    */
   private async setupNotifications(): Promise<void> {
     const stateChar = this.characteristics.get('STATE_INFO')
+    const shotSampleChar = this.characteristics.get('SHOT_SAMPLE')
 
+    // Set up STATE_INFO notifications (state and substate)
     if (stateChar) {
       try {
         await stateChar.startNotifications()
-        stateChar.addEventListener('characteristicvaluechanged', this.handleStateUpdate.bind(this))
+        stateChar.addEventListener('characteristicvaluechanged', this.handleStateInfoUpdate.bind(this))
+        console.log('STATE_INFO notifications enabled')
       } catch (error) {
-        console.warn('Could not setup state notifications:', error)
+        console.warn('Could not setup STATE_INFO notifications:', error)
+      }
+    }
+
+    // Set up SHOT_SAMPLE notifications (real-time sensor data)
+    if (shotSampleChar) {
+      try {
+        await shotSampleChar.startNotifications()
+        shotSampleChar.addEventListener('characteristicvaluechanged', this.handleShotSampleUpdate.bind(this))
+        console.log('SHOT_SAMPLE notifications enabled')
+      } catch (error) {
+        console.warn('Could not setup SHOT_SAMPLE notifications:', error)
       }
     }
   }
@@ -166,84 +181,130 @@ class BluetoothService {
    */
   private async verifyInitialState(): Promise<void> {
     const stateChar = this.characteristics.get('STATE_INFO')
+    const shotSampleChar = this.characteristics.get('SHOT_SAMPLE')
 
-    if (!stateChar) {
-      throw new Error('STATE_INFO characteristic not available')
+    if (!stateChar && !shotSampleChar) {
+      throw new Error('No data characteristics available')
     }
 
     try {
-      // Try to read initial state with extended timeout
-      const value = await this.readWithTimeout(stateChar, this.INITIAL_STATE_TIMEOUT_MS)
-      const state = this.parseStateData(value)
-      useMachineStore.getState().setState(state)
-      console.log('Initial machine state received:', state.state)
+      // Wait for first notification with timeout
+      // STATE_INFO and SHOT_SAMPLE are notification-only, not readable
+      await this.waitForFirstNotification(this.INITIAL_STATE_TIMEOUT_MS)
+      console.log('Initial machine data received')
     } catch (error) {
       console.error('Failed to get initial machine state:', error)
       throw new Error(
-        'Unable to retrieve machine information. Please ensure the machine is powered on and ready. ' +
-        'Try power cycling the machine and reconnecting.'
+        'Unable to retrieve machine information. The machine may not be ready. ' +
+        'Please ensure the machine is fully warmed up and try reconnecting.'
       )
     }
   }
 
   /**
-   * Handle state updates from the machine
+   * Wait for first notification from the machine
    */
-  private handleStateUpdate(event: Event): void {
+  private waitForFirstNotification(timeoutMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('Timeout waiting for machine data'))
+      }, timeoutMs)
+
+      // Check if we already have state (notification arrived during setup)
+      if (useMachineStore.getState().state) {
+        clearTimeout(timer)
+        resolve()
+        return
+      }
+
+      // Wait for state to be set by notification handler
+      const unsubscribe = useMachineStore.subscribe((state) => {
+        if (state.state) {
+          clearTimeout(timer)
+          unsubscribe()
+          resolve()
+        }
+      })
+    })
+  }
+
+  /**
+   * Handle STATE_INFO updates (state and substate only)
+   */
+  private handleStateInfoUpdate(event: Event): void {
     const characteristic = event.target as BluetoothRemoteGATTCharacteristic
     const value = characteristic.value
 
     if (!value) return
 
     try {
-      const state = this.parseStateData(value)
-      useMachineStore.getState().setState(state)
+      const stateInfo = parseStateInfo(value)
+      const machineStore = useMachineStore.getState()
+      const currentState = machineStore.state
+
+      // Update state type based on the state number
+      const stateType = mapStateToType(stateInfo.state) as MachineState['state']
+
+      // Preserve existing sensor data, just update state
+      machineStore.setState({
+        ...currentState,
+        state: stateType,
+        substate: stateInfo.substate.toString(),
+        timestamp: Date.now(),
+      } as MachineState)
+    } catch (error) {
+      console.error('Error parsing STATE_INFO:', error)
+    }
+  }
+
+  /**
+   * Handle SHOT_SAMPLE updates (real-time sensor data)
+   */
+  private handleShotSampleUpdate(event: Event): void {
+    const characteristic = event.target as BluetoothRemoteGATTCharacteristic
+    const value = characteristic.value
+
+    if (!value) return
+
+    try {
+      const sample = parseShotSample(value)
+      const machineStore = useMachineStore.getState()
+      const currentState = machineStore.state
+
+      // Build complete machine state with sensor data
+      const state: MachineState = {
+        state: currentState?.state || 'idle',
+        substate: currentState?.substate || '0',
+        temperature: {
+          mix: sample.mixTemp,
+          head: sample.headTemp,
+          steam: sample.steamTemp,
+          target: sample.setMixTemp,
+        },
+        pressure: sample.groupPressure,
+        flow: sample.groupFlow,
+        weight: 0, // Weight comes from a separate characteristic
+        timestamp: Date.now(),
+      }
+
+      machineStore.setState(state)
 
       // If recording a shot, add data point
       const shotStore = useShotStore.getState()
-      if (shotStore.isRecording && state.state === 'brewing') {
+      if (shotStore.isRecording && currentState?.state === 'brewing') {
         shotStore.addDataPoint({
           timestamp: Date.now() - (shotStore.activeShot?.startTime || Date.now()),
-          temperature: state.temperature.mix,
-          pressure: state.pressure,
-          flow: state.flow,
-          weight: state.weight,
+          temperature: sample.mixTemp,
+          pressure: sample.groupPressure,
+          flow: sample.groupFlow,
+          weight: 0,
         })
       }
     } catch (error) {
-      console.error('Error parsing state data:', error)
+      console.error('Error parsing SHOT_SAMPLE:', error)
     }
   }
 
-  /**
-   * Parse state data from DataView
-   */
-  private parseStateData(dataView: DataView): MachineState {
-    // This is a simplified parser - actual implementation would depend on
-    // the Decent machine's exact data format
-    return {
-      state: this.parseMachineState(dataView.getUint8(0)),
-      substate: dataView.getUint8(1).toString(),
-      temperature: {
-        mix: dataView.getFloat32(2, true),
-        head: dataView.getFloat32(6, true),
-        steam: dataView.getFloat32(10, true),
-        target: dataView.getFloat32(14, true),
-      },
-      pressure: dataView.getFloat32(18, true),
-      flow: dataView.getFloat32(22, true),
-      weight: dataView.getFloat32(26, true),
-      timestamp: Date.now(),
-    }
-  }
-
-  /**
-   * Parse machine state byte
-   */
-  private parseMachineState(byte: number): MachineState['state'] {
-    const states = ['idle', 'sleep', 'warming', 'ready', 'brewing', 'steam', 'flush', 'cleaning', 'error']
-    return (states[byte] || 'idle') as MachineState['state']
-  }
 
   /**
    * Send a command to the machine
@@ -349,41 +410,13 @@ class BluetoothService {
 
   /**
    * Start periodic data updates
+   * Note: For Decent machines, STATE_INFO and SHOT_SAMPLE are notification-only.
+   * This method is kept for potential future use with other characteristics.
    */
   private startDataUpdates(): void {
-    // Poll for data every 100ms when connected
-    this.dataUpdateInterval = window.setInterval(async () => {
-      if (!this.server?.connected) {
-        if (this.dataUpdateInterval) {
-          clearInterval(this.dataUpdateInterval)
-        }
-        return
-      }
-
-      // Request current state if notifications aren't working
-      await this.requestStateUpdate()
-    }, 100)
-  }
-
-  /**
-   * Request state update from machine
-   */
-  private async requestStateUpdate(): Promise<void> {
-    const stateChar = this.characteristics.get('STATE_INFO')
-
-    if (!stateChar) return
-
-    try {
-      const value = await this.readWithTimeout(stateChar)
-      const state = this.parseStateData(value)
-      useMachineStore.getState().setState(state)
-    } catch (error) {
-      // Silently fail - notifications should handle updates
-      // Only log if it's not a timeout (timeouts are expected if notifications work)
-      if (error instanceof Error && !error.message.includes('timeout')) {
-        console.warn('State update failed:', error)
-      }
-    }
+    // Notifications handle all real-time updates
+    // This could be used in the future for keepalive or other periodic tasks
+    console.log('Data updates will be handled via BLE notifications')
   }
 
   /**
