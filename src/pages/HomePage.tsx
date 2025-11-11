@@ -26,12 +26,12 @@ import {
 } from 'lucide-react'
 
 interface DataPoint {
-  time: number
+  time: number // seconds since start
   temperature: number
+  headTemp: number
   pressure: number
   flow: number
   targetTemp: number
-  targetPressure: number
 }
 
 export default function HomePage() {
@@ -40,6 +40,7 @@ export default function HomePage() {
   const { isRecording } = useShotStore()
   const [historicalData, setHistoricalData] = useState<DataPoint[]>([])
   const [timeRange, setTimeRange] = useState(60) // seconds
+  const [startTime] = useState(Date.now())
   const isDemoMode = demoService.isActive()
 
   // Update historical data
@@ -47,33 +48,28 @@ export default function HomePage() {
     if (!state) return
 
     const now = Date.now()
+    const elapsedSeconds = (now - startTime) / 1000
+
     const newPoint: DataPoint = {
-      time: now,
+      time: elapsedSeconds,
       temperature: state.temperature.mix,
+      headTemp: state.temperature.head,
       pressure: state.pressure,
       flow: state.flow,
       targetTemp: state.temperature.target,
-      targetPressure: 9.0, // Default target pressure
     }
 
     setHistoricalData((prev) => {
-      const cutoff = now - timeRange * 1000
-      const filtered = prev.filter((p) => p.time > cutoff)
+      // Keep only data within time range
+      const cutoffTime = elapsedSeconds - timeRange
+      const filtered = prev.filter((p) => p.time > cutoffTime)
       return [...filtered, newPoint].slice(-300) // Keep last 300 points
     })
-  }, [state, timeRange])
-
-  // Format data for charts
-  const chartData = historicalData.map((point, index) => ({
-    time: index,
-    temperature: point.temperature,
-    targetTemp: point.targetTemp,
-    pressure: point.pressure,
-    flow: point.flow,
-  }))
+  }, [state, timeRange, startTime])
 
   const handleStartEspresso = async () => {
     try {
+      console.log('[HomePage] Starting espresso...')
       if (isDemoMode) {
         const shotStore = useShotStore.getState()
         shotStore.startShot({
@@ -85,13 +81,16 @@ export default function HomePage() {
       } else {
         await bluetoothService.startEspresso()
       }
+      console.log('[HomePage] Espresso started successfully')
     } catch (error) {
-      console.error('Failed to start espresso:', error)
+      console.error('[HomePage] Failed to start espresso:', error)
+      alert(`Failed to start espresso: ${error}`)
     }
   }
 
   const handleStop = async () => {
     try {
+      console.log('[HomePage] Stopping...')
       if (isDemoMode) {
         demoService.simulateStop()
         const shotStore = useShotStore.getState()
@@ -101,44 +100,55 @@ export default function HomePage() {
       } else {
         await bluetoothService.stop()
       }
+      console.log('[HomePage] Stop command sent successfully')
     } catch (error) {
-      console.error('Failed to stop:', error)
+      console.error('[HomePage] Failed to stop:', error)
+      alert(`Failed to stop: ${error}`)
     }
   }
 
   const handleStartSteam = async () => {
     try {
+      console.log('[HomePage] Starting steam...')
       if (isDemoMode) {
         demoService.simulateStartSteam()
       } else {
         await bluetoothService.startSteam()
       }
+      console.log('[HomePage] Steam started successfully')
     } catch (error) {
-      console.error('Failed to start steam:', error)
+      console.error('[HomePage] Failed to start steam:', error)
+      alert(`Failed to start steam: ${error}`)
     }
   }
 
   const handleStartFlush = async () => {
     try {
+      console.log('[HomePage] Starting flush...')
       if (isDemoMode) {
         demoService.simulateFlush()
       } else {
         await bluetoothService.startFlush()
       }
+      console.log('[HomePage] Flush started successfully')
     } catch (error) {
-      console.error('Failed to start flush:', error)
+      console.error('[HomePage] Failed to start flush:', error)
+      alert(`Failed to start flush: ${error}`)
     }
   }
 
   const handleStartWater = async () => {
     try {
+      console.log('[HomePage] Starting hot water...')
       if (isDemoMode) {
         // Demo not implemented
       } else {
         await bluetoothService.startWater()
       }
+      console.log('[HomePage] Hot water started successfully')
     } catch (error) {
-      console.error('Failed to start water:', error)
+      console.error('[HomePage] Failed to start water:', error)
+      alert(`Failed to start water: ${error}`)
     }
   }
 
@@ -158,7 +168,7 @@ export default function HomePage() {
 
   return (
     <div className="flex h-full">
-      {/* Main Content - Charts */}
+      {/* Main Content - Unified Plot */}
       <div className="flex-1 p-4 overflow-y-auto">
         <div className="space-y-4">
           {/* Status Header */}
@@ -167,7 +177,7 @@ export default function HomePage() {
               <div>
                 <h1 className="text-2xl font-bold text-white mb-1">Live Monitor</h1>
                 <p className="text-gray-400 text-sm">
-                  Real-time machine parameters and control
+                  Real-time machine parameters
                 </p>
               </div>
               <div className="text-right">
@@ -196,11 +206,19 @@ export default function HomePage() {
           <div className="grid grid-cols-4 gap-3">
             <MetricCard
               icon={Thermometer}
-              label="Temperature"
+              label="Mix Temp"
               value={state.temperature.mix}
               target={state.temperature.target}
               unit="°C"
               color="orange"
+            />
+            <MetricCard
+              icon={Thermometer}
+              label="Head Temp"
+              value={state.temperature.head}
+              target={state.temperature.target}
+              unit="°C"
+              color="purple"
             />
             <MetricCard
               icon={Gauge}
@@ -217,50 +235,91 @@ export default function HomePage() {
               unit="ml/s"
               color="cyan"
             />
-            <MetricCard
-              icon={Activity}
-              label="Group Head"
-              value={state.temperature.head}
-              unit="°C"
-              color="purple"
-            />
           </div>
 
-          {/* Temperature Chart */}
+          {/* Unified Plot with Dual Y-Axes */}
           <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <Thermometer className="w-5 h-5" />
-              Temperature
-            </h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={chartData}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                All Parameters
+              </h3>
+              <select
+                value={timeRange}
+                onChange={(e) => setTimeRange(Number(e.target.value))}
+                className="bg-gray-700 text-white rounded px-3 py-1 text-sm"
+              >
+                <option value={30}>30s</option>
+                <option value={60}>1m</option>
+                <option value={120}>2m</option>
+                <option value={300}>5m</option>
+              </select>
+            </div>
+            <ResponsiveContainer width="100%" height={450}>
+              <LineChart data={historicalData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+
+                {/* X-Axis: Time in seconds */}
                 <XAxis
                   dataKey="time"
                   stroke="#9CA3AF"
-                  tick={{ fill: '#9CA3AF' }}
-                  label={{ value: 'Time', position: 'insideBottom', offset: -5, fill: '#9CA3AF' }}
+                  tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                  label={{ value: 'Time (s)', position: 'insideBottom', offset: -5, fill: '#9CA3AF' }}
+                  type="number"
+                  domain={['dataMin', 'dataMax']}
+                  tickFormatter={(value) => value.toFixed(0)}
                 />
+
+                {/* Left Y-Axis: Temperature (°C) */}
                 <YAxis
-                  stroke="#9CA3AF"
-                  tick={{ fill: '#9CA3AF' }}
-                  label={{ value: '°C', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}
+                  yAxisId="temp"
+                  stroke="#F97316"
+                  tick={{ fill: '#F97316', fontSize: 12 }}
+                  label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft', fill: '#F97316' }}
                   domain={[0, 100]}
                 />
+
+                {/* Right Y-Axis: Pressure (bar) & Flow (ml/s) */}
+                <YAxis
+                  yAxisId="pressure"
+                  orientation="right"
+                  stroke="#3B82F6"
+                  tick={{ fill: '#3B82F6', fontSize: 12 }}
+                  label={{ value: 'Pressure (bar) / Flow (ml/s)', angle: 90, position: 'insideRight', fill: '#3B82F6' }}
+                  domain={[0, 12]}
+                />
+
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
                   labelStyle={{ color: '#9CA3AF' }}
+                  formatter={(value: number) => value.toFixed(2)}
+                  labelFormatter={(value) => `${value.toFixed(1)}s`}
                 />
                 <Legend />
+
+                {/* Temperature Lines */}
                 <Line
+                  yAxisId="temp"
                   type="monotone"
                   dataKey="temperature"
                   stroke="#F97316"
                   strokeWidth={2}
                   dot={false}
                   name="Mix Temp"
+                  isAnimationActive={false}
                 />
                 <Line
+                  yAxisId="temp"
+                  type="monotone"
+                  dataKey="headTemp"
+                  stroke="#A855F7"
+                  strokeWidth={2}
+                  dot={false}
+                  name="Head Temp"
+                  isAnimationActive={false}
+                />
+                <Line
+                  yAxisId="temp"
                   type="monotone"
                   dataKey="targetTemp"
                   stroke="#FB923C"
@@ -268,82 +327,29 @@ export default function HomePage() {
                   strokeDasharray="5 5"
                   dot={false}
                   name="Target"
+                  isAnimationActive={false}
                 />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
 
-          {/* Pressure Chart */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <Gauge className="w-5 h-5" />
-              Pressure
-            </h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="time"
-                  stroke="#9CA3AF"
-                  tick={{ fill: '#9CA3AF' }}
-                  label={{ value: 'Time', position: 'insideBottom', offset: -5, fill: '#9CA3AF' }}
-                />
-                <YAxis
-                  stroke="#9CA3AF"
-                  tick={{ fill: '#9CA3AF' }}
-                  label={{ value: 'bar', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}
-                  domain={[0, 12]}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
-                  labelStyle={{ color: '#9CA3AF' }}
-                />
-                <Legend />
+                {/* Pressure & Flow Lines */}
                 <Line
+                  yAxisId="pressure"
                   type="monotone"
                   dataKey="pressure"
                   stroke="#3B82F6"
                   strokeWidth={2}
                   dot={false}
                   name="Pressure"
+                  isAnimationActive={false}
                 />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Flow Chart */}
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <Droplets className="w-5 h-5" />
-              Flow Rate
-            </h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="time"
-                  stroke="#9CA3AF"
-                  tick={{ fill: '#9CA3AF' }}
-                  label={{ value: 'Time', position: 'insideBottom', offset: -5, fill: '#9CA3AF' }}
-                />
-                <YAxis
-                  stroke="#9CA3AF"
-                  tick={{ fill: '#9CA3AF' }}
-                  label={{ value: 'ml/s', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}
-                  domain={[0, 6]}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
-                  labelStyle={{ color: '#9CA3AF' }}
-                />
-                <Legend />
                 <Line
+                  yAxisId="pressure"
                   type="monotone"
                   dataKey="flow"
                   stroke="#06B6D4"
                   strokeWidth={2}
                   dot={false}
-                  name="Flow Rate"
+                  name="Flow"
+                  isAnimationActive={false}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -369,7 +375,7 @@ export default function HomePage() {
             <button
               onClick={handleStartEspresso}
               disabled={!canStartEspresso}
-              className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
             >
               <Play className="w-5 h-5" />
               Start Espresso
@@ -413,11 +419,18 @@ export default function HomePage() {
               <ControlButton
                 icon={Power}
                 label="Sleep"
-                onClick={() => {
-                  if (isDemoMode) {
-                    // Demo
-                  } else {
-                    bluetoothService.sendCommand(0) // SLEEP
+                onClick={async () => {
+                  try {
+                    console.log('[HomePage] Entering sleep mode...')
+                    if (isDemoMode) {
+                      // Demo
+                    } else {
+                      await bluetoothService.sendCommand(0) // SLEEP
+                    }
+                    console.log('[HomePage] Sleep command sent')
+                  } catch (error) {
+                    console.error('[HomePage] Failed to enter sleep:', error)
+                    alert(`Failed to enter sleep: ${error}`)
                   }
                 }}
                 disabled={false}
@@ -435,24 +448,6 @@ export default function HomePage() {
             <StatusRow label="Pressure" value={`${state.pressure.toFixed(2)} bar`} />
             <StatusRow label="Flow" value={`${state.flow.toFixed(2)} ml/s`} />
             <StatusRow label="Weight" value={`${state.weight.toFixed(1)} g`} />
-          </div>
-
-          {/* Chart Controls */}
-          <div className="bg-gray-800 rounded-lg p-3">
-            <h3 className="text-sm font-semibold text-white mb-2">Display</h3>
-            <div className="space-y-2">
-              <label className="text-xs text-gray-400">Time Range</label>
-              <select
-                value={timeRange}
-                onChange={(e) => setTimeRange(Number(e.target.value))}
-                className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm"
-              >
-                <option value={30}>30 seconds</option>
-                <option value={60}>1 minute</option>
-                <option value={120}>2 minutes</option>
-                <option value={300}>5 minutes</option>
-              </select>
-            </div>
           </div>
         </div>
       </div>
@@ -506,7 +501,7 @@ function ControlButton({ icon: Icon, label, onClick, disabled }: ControlButtonPr
     <button
       onClick={onClick}
       disabled={disabled}
-      className="py-3 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex flex-col items-center justify-center gap-1"
+      className="py-3 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex flex-col items-center justify-center gap-1"
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs">{label}</span>
