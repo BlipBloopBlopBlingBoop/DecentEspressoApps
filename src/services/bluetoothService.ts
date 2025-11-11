@@ -54,14 +54,17 @@ class BluetoothService {
         throw new Error('Web Bluetooth is not supported in this browser')
       }
 
-      // Request device
+      // Request device - filter by name and include service as optional
+      // This matches all Decent machines (DE1, DE1+, DE1PRO, etc.)
+      console.log('Requesting Bluetooth device with filter: namePrefix="DE1"')
       this.device = await navigator.bluetooth.requestDevice({
         filters: [
-          { namePrefix: 'DE1' },
-          { services: [DECENT_SERVICE_UUID] }
+          { namePrefix: 'DE1' }
         ],
         optionalServices: [DECENT_SERVICE_UUID]
       })
+
+      console.log('Device selected:', this.device.name, 'ID:', this.device.id)
 
       if (!this.device.gatt) {
         throw new Error('GATT not available on device')
@@ -71,17 +74,24 @@ class BluetoothService {
       this.device.addEventListener('gattserverdisconnected', this.onDisconnected.bind(this))
 
       // Connect to GATT server
+      console.log('Connecting to GATT server...')
       this.server = await this.device.gatt.connect()
       connectionStore.setDeviceName(this.device.name || 'Decent Machine')
+      console.log('GATT server connected')
 
       // Get primary service
+      console.log('Getting primary service:', DECENT_SERVICE_UUID)
       const service = await this.server.getPrimaryService(DECENT_SERVICE_UUID)
+      console.log('Primary service acquired')
 
       // Get all characteristics
       await this.setupCharacteristics(service)
 
       // Start listening to notifications
       await this.setupNotifications()
+
+      // Try to read version for diagnostics (non-blocking)
+      this.readVersion().catch(e => console.warn('Could not read version:', e))
 
       // Verify we can get initial machine state before marking as connected
       await this.verifyInitialState()
@@ -92,6 +102,8 @@ class BluetoothService {
       // Start periodic data updates
       this.startDataUpdates()
 
+      console.log('Successfully connected to Decent machine:', this.device.name)
+
       return {
         id: this.device.id,
         name: this.device.name || 'Decent Machine',
@@ -100,8 +112,12 @@ class BluetoothService {
         server: this.server,
       }
     } catch (error) {
+      connectionStore.setConnecting(false)
       connectionStore.setError(this.getErrorMessage(error))
+      console.error('Connection failed:', error)
       throw error
+    } finally {
+      connectionStore.setConnecting(false)
     }
   }
 
@@ -109,13 +125,19 @@ class BluetoothService {
    * Disconnect from the machine
    */
   async disconnect(): Promise<void> {
+    console.log('Disconnecting from machine...')
+
     if (this.dataUpdateInterval) {
       clearInterval(this.dataUpdateInterval)
       this.dataUpdateInterval = null
     }
 
     if (this.server && this.server.connected) {
-      this.server.disconnect()
+      try {
+        this.server.disconnect()
+      } catch (error) {
+        console.warn('Error during disconnect:', error)
+      }
     }
 
     this.device = null
@@ -124,20 +146,82 @@ class BluetoothService {
 
     useConnectionStore.getState().reset()
     useMachineStore.getState().reset()
+
+    console.log('Disconnected')
+  }
+
+  /**
+   * Attempt to reconnect to a previously connected device
+   */
+  async reconnect(): Promise<DecentMachine | null> {
+    if (!this.device) {
+      console.warn('No previous device to reconnect to')
+      return null
+    }
+
+    try {
+      console.log('Attempting to reconnect to:', this.device.name)
+
+      if (!this.device.gatt) {
+        throw new Error('GATT not available')
+      }
+
+      // Try to reconnect to the existing device
+      this.server = await this.device.gatt.connect()
+
+      // Re-setup everything
+      const service = await this.server.getPrimaryService(DECENT_SERVICE_UUID)
+      await this.setupCharacteristics(service)
+      await this.setupNotifications()
+      await this.verifyInitialState()
+
+      const connectionStore = useConnectionStore.getState()
+      connectionStore.setConnected(true)
+      connectionStore.updateLastConnected()
+
+      console.log('Reconnected successfully')
+
+      return {
+        id: this.device.id,
+        name: this.device.name || 'Decent Machine',
+        connected: true,
+        device: this.device,
+        server: this.server,
+      }
+    } catch (error) {
+      console.error('Reconnection failed:', error)
+      return null
+    }
   }
 
   /**
    * Setup all characteristics
    */
   private async setupCharacteristics(service: BluetoothRemoteGATTService): Promise<void> {
+    console.log('Setting up characteristics...')
+    const foundCharacteristics: string[] = []
+    const missingCharacteristics: string[] = []
+
     try {
       for (const [name, uuid] of Object.entries(DECENT_CHARACTERISTICS)) {
         try {
           const characteristic = await service.getCharacteristic(uuid)
           this.characteristics.set(name, characteristic)
+          foundCharacteristics.push(name)
         } catch (error) {
-          console.warn(`Could not get characteristic ${name}:`, error)
+          missingCharacteristics.push(name)
+          console.warn(`Could not get characteristic ${name} (${uuid}):`, error)
         }
+      }
+
+      console.log(`Found ${foundCharacteristics.length} characteristics:`, foundCharacteristics)
+      if (missingCharacteristics.length > 0) {
+        console.warn(`Missing ${missingCharacteristics.length} characteristics:`, missingCharacteristics)
+      }
+
+      // Verify critical characteristics are present
+      if (!this.characteristics.has('STATE_INFO') && !this.characteristics.has('SHOT_SAMPLE')) {
+        throw new Error('Critical characteristics (STATE_INFO or SHOT_SAMPLE) not found')
       }
     } catch (error) {
       console.error('Error setting up characteristics:', error)
@@ -310,19 +394,68 @@ class BluetoothService {
    * Send a command to the machine
    */
   async sendCommand(command: DecentCommand, data?: Uint8Array): Promise<void> {
-    const commandChar = this.characteristics.get('COMMAND')
+    const commandChar = this.characteristics.get('REQUESTED_STATE')
 
     if (!commandChar) {
-      throw new Error('Command characteristic not available')
+      throw new Error('REQUESTED_STATE characteristic not available - cannot send commands')
     }
 
-    const buffer = new Uint8Array(data ? data.length + 1 : 1)
-    buffer[0] = command
-    if (data) {
-      buffer.set(data, 1)
+    try {
+      // Commands are single bytes written to REQUESTED_STATE (A002)
+      const buffer = new Uint8Array(data ? data.length + 1 : 1)
+      buffer[0] = command
+      if (data) {
+        buffer.set(data, 1)
+      }
+
+      await commandChar.writeValue(buffer)
+      console.log(`Command sent: ${DecentCommand[command]} (0x${command.toString(16).padStart(2, '0')})`)
+    } catch (error) {
+      console.error('Failed to send command:', error)
+      throw new Error(`Failed to send command to machine: ${error}`)
+    }
+  }
+
+  /**
+   * Read firmware version from the machine
+   */
+  async readVersion(): Promise<string> {
+    const versionChar = this.characteristics.get('VERSION')
+
+    if (!versionChar) {
+      throw new Error('VERSION characteristic not available')
     }
 
-    await commandChar.writeValue(buffer)
+    try {
+      const value = await this.readWithTimeout(versionChar)
+      const decoder = new TextDecoder()
+      const version = decoder.decode(value.buffer)
+      console.log('Machine version:', version)
+      return version
+    } catch (error) {
+      console.error('Failed to read version:', error)
+      return 'Unknown'
+    }
+  }
+
+  /**
+   * Read water levels from the machine
+   */
+  async readWaterLevels(): Promise<number> {
+    const waterChar = this.characteristics.get('WATER_LEVELS')
+
+    if (!waterChar) {
+      return 0
+    }
+
+    try {
+      const value = await this.readWithTimeout(waterChar)
+      // Parse water level (format depends on machine firmware)
+      return value.getUint8(0)
+    } catch (error) {
+      console.warn('Failed to read water levels:', error)
+      return 0
+    }
   }
 
   /**
@@ -437,15 +570,33 @@ class BluetoothService {
    */
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
-      if (error.message.includes('User cancelled')) {
+      // User cancelled the device selection
+      if (error.message.includes('User cancelled') || error.message.includes('cancelled')) {
         return 'Connection cancelled by user'
       }
-      if (error.message.includes('not found')) {
-        return 'Decent machine not found. Make sure it is powered on and in range.'
+      // Device not found or not available
+      if (error.message.includes('not found') || error.message.includes('No device')) {
+        return 'Decent machine not found. Make sure it is powered on and in Bluetooth range.'
+      }
+      // Bluetooth not available
+      if (error.message.includes('not supported') || error.message.includes('Bluetooth')) {
+        return 'Web Bluetooth is not supported. Please use Chrome, Edge, or Opera browser.'
+      }
+      // GATT connection issues
+      if (error.message.includes('GATT') || error.message.includes('connect')) {
+        return 'Failed to connect to machine. Try turning the machine off and on again.'
+      }
+      // Service not available
+      if (error.message.includes('service')) {
+        return 'Machine service not available. Ensure the machine firmware is up to date.'
+      }
+      // Timeout issues
+      if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+        return 'Connection timeout. The machine may not be responding. Try restarting it.'
       }
       return error.message
     }
-    return 'Unknown error occurred'
+    return 'Unknown error occurred during connection'
   }
 
   /**
