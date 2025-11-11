@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ShotData, ShotDataPoint } from '../types/decent'
+import { databaseService } from '../services/databaseService'
 
 interface ShotStore {
   shots: ShotData[]
@@ -15,7 +16,7 @@ interface ShotStore {
   clearActiveShot: () => void
 }
 
-export const useShotStore = create<ShotStore>((set) => ({
+export const useShotStore = create<ShotStore>((set, get) => ({
   shots: [],
   activeShot: null,
   isRecording: false,
@@ -44,8 +45,9 @@ export const useShotStore = create<ShotStore>((set) => ({
     return { activeShot: updatedShot }
   }),
 
-  endShot: (finalWeight) => set((state) => {
-    if (!state.activeShot) return state
+  endShot: (finalWeight) => {
+    const state = get()
+    if (!state.activeShot) return
 
     const completedShot: ShotData = {
       ...state.activeShot,
@@ -53,12 +55,17 @@ export const useShotStore = create<ShotStore>((set) => ({
       finalWeight,
     }
 
-    return {
+    // Save to database immediately
+    databaseService.saveShot(completedShot).catch(error => {
+      console.error('Failed to save shot to database:', error)
+    })
+
+    set({
       shots: [completedShot, ...state.shots],
       activeShot: null,
       isRecording: false,
-    }
-  }),
+    })
+  },
 
   updateShot: (id, updates) => set((state) => ({
     shots: state.shots.map((shot) =>

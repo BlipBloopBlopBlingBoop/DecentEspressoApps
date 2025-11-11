@@ -1,6 +1,8 @@
 # Decent Espresso Control
 
-A fully-functional mobile web application for controlling Decent espresso machines via Bluetooth. This app provides comprehensive control over all machine functions, real-time data visualization, recipe management, and shot history tracking.
+> **⚠️ IMPORTANT DISCLAIMER:** This is an **unofficial**, **educational** project created for demonstration and learning purposes only. This application is **NOT affiliated with, endorsed by, or sponsored by Decent Espresso Ltd.** Use entirely at your own risk. See [Legal Disclaimer](#legal-disclaimer) below.
+
+A fully-functional mobile web application for controlling Decent espresso machines via Bluetooth. This app provides comprehensive control over all machine functions, real-time data visualization, recipe management, shot history tracking, and advanced analytics.
 
 ## 🚀 Quick Deploy
 
@@ -50,10 +52,11 @@ A fully-functional mobile web application for controlling Decent espresso machin
 ### 📜 Shot History
 - Complete shot database with IndexedDB
 - Detailed shot metrics (duration, yield, ratio)
-- Rating system for shots
-- Notes and metadata
-- Search and filter by rating
-- Export shot data
+- Interactive 5-star rating system for shots
+- Editable notes and tasting metadata
+- Search and filter by rating, profile, or notes
+- Shot detail view with extraction charts
+- Automatic database persistence
 
 ### 💾 Data Management
 - Export all data to JSON
@@ -66,6 +69,14 @@ A fully-functional mobile web application for controlling Decent espresso machin
 - Touch-friendly controls (minimum 44px tap targets)
 - PWA-ready architecture
 - Dark mode interface
+
+### 🎭 Demo Mode
+- Full simulation for testing without hardware
+- Realistic espresso extraction with pressure profiling
+- Temperature variations during brewing
+- Steam mode operation
+- Shot recording with realistic data points
+- Perfect for learning and experimentation
 
 ## Technology Stack
 
@@ -275,15 +286,76 @@ The app uses Zustand for state management with four main stores:
 
 ## Contributing
 
-This is an open-source project. Contributions are welcome!
+This is an open-source educational project. Contributions are welcome for learning purposes!
+
+## ⚠️ Legal Disclaimer
+
+### Educational & Demonstration Purpose Only
+
+This application is provided strictly for **educational and demonstration purposes**. It is a proof-of-concept project showcasing Web Bluetooth API integration and should **NOT** be considered production-ready software.
+
+### Use at Your Own Risk
+
+This software is provided **"AS IS"** without warranty of any kind, express or implied. By using this application, you acknowledge that:
+
+- ✋ You use this software entirely at your own risk
+- ⚠️ The developers assume **NO LIABILITY** for any damages, injuries, or losses
+- 🔧 You are responsible for the safe operation of your espresso machine
+- 📜 **NO WARRANTIES** are provided regarding functionality, safety, or reliability
+
+### Intellectual Property Rights
+
+**Decent Espresso®** and all related trademarks, logos, and intellectual property belong to **Decent Espresso Ltd.**
+
+This project is an independent, unofficial implementation and is:
+- ❌ **NOT affiliated with Decent Espresso Ltd.**
+- ❌ **NOT endorsed by Decent Espresso Ltd.**
+- ❌ **NOT sponsored by Decent Espresso Ltd.**
+
+All original design, engineering, and proprietary elements of Decent Espresso machines remain the exclusive property of Decent Espresso Ltd. and its rightful owners.
+
+### Safety Warning
+
+**⚠️ CRITICAL:** Espresso machines operate at **high temperatures** (up to 165°C/330°F) and **high pressures** (up to 12 bar/174 psi).
+
+Improper use can result in:
+- 🔥 **Burns** from hot water, steam, or machine surfaces
+- ⚡ **Equipment damage** or malfunction
+- 💧 **Water damage** to surrounding areas
+- ⚡ **Electrical hazards** if machine is improperly maintained
+
+**Always:**
+- Follow manufacturer safety guidelines
+- Never leave your machine unattended during operation
+- Keep children and pets away from operating machines
+- Ensure proper ventilation and stable placement
+- Regularly maintain and descale your machine
+
+### No Official Support
+
+This is a community/hobbyist project. The original equipment manufacturers and their official support channels are **NOT responsible** for issues arising from the use of this software.
+
+### Privacy & Data
+
+- All data is stored **locally** in your browser using IndexedDB
+- **No data** is transmitted to external servers
+- The developers make **no guarantees** about data persistence, privacy, or security
+- You are responsible for backing up your own data
+
+### Liability Waiver
+
+By using this software, you agree to **release, indemnify, and hold harmless** the developers, contributors, and any affiliated parties from any and all liability, claims, damages, or expenses arising from your use of this application.
+
+### Entertainment Value
+
+This project is created for fun, learning, and experimentation with modern web technologies. It is **NOT** intended for:
+- ❌ Commercial use
+- ❌ Replacement for official manufacturer software
+- ❌ Critical or production applications
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Disclaimer
-
-This is an unofficial third-party application and is not affiliated with, endorsed by, or connected to Decent Espresso. Use at your own risk.
+MIT License - See LICENSE file for details. Note that this license applies to the code only and does not grant any rights to Decent Espresso trademarks or intellectual property.
 
 ## Support
 
@@ -294,6 +366,35 @@ For issues and questions:
 
 ## Acknowledgments
 
-- Decent Espresso for creating amazing machines
-- Web Bluetooth API community
-- Open-source contributors
+- **Decent Espresso Ltd.** - For creating incredible espresso machines that inspire innovation
+- **Web Bluetooth API Community** - For documentation, examples, and support
+- **Open Source Contributors** - For the amazing libraries that make this project possible
+- **Espresso Enthusiasts** - For testing, feedback, and inspiration
+
+---
+
+## 📄 Version Information
+
+**Current Version:** v1.0.0 (January 2025)
+
+### Changelog
+
+#### v1.0.0 (January 2025) - Initial Release
+- ✅ Core Bluetooth connectivity with Decent machines
+- ✅ Real-time data visualization with dual Y-axis charts
+- ✅ Shot history with rating and notes functionality
+- ✅ Advanced analytics dashboard
+- ✅ Demo mode for testing without hardware
+- ✅ Recipe management system
+- ✅ Comprehensive legal disclaimer
+- ✅ Auto-selecting temperature parsing
+- ✅ Database persistence for all shots
+- ✅ Import/export functionality
+
+---
+
+**Made with ☕ by the community • For educational purposes only • No warranty provided**
+
+© 2025 • This is an unofficial educational project • Decent Espresso® is a trademark of Decent Espresso Ltd.
+
+*Version 1.0.0 • Last Updated: January 2025*

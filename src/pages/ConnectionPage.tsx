@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConnectionStore } from '../stores/connectionStore'
 import { bluetoothService } from '../services/bluetoothService'
 import { demoService } from '../services/demoService'
+import LegalDisclaimer from '../components/LegalDisclaimer'
 import {
   Wifi,
   AlertCircle,
@@ -17,6 +18,15 @@ export default function ConnectionPage() {
   const navigate = useNavigate()
   const { connected, connecting, error, deviceName } = useConnectionStore()
   const [showTroubleshooting, setShowTroubleshooting] = useState(false)
+  const [showDisclaimer, setShowDisclaimer] = useState(false)
+
+  useEffect(() => {
+    // Check if user has already accepted the disclaimer
+    const hasAccepted = localStorage.getItem('legal-disclaimer-accepted')
+    if (!hasAccepted) {
+      setShowDisclaimer(true)
+    }
+  }, [])
 
   const handleConnect = async () => {
     try {
@@ -77,19 +87,23 @@ export default function ConnectionPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-full">
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="max-w-md w-full space-y-6">
-          {/* Header */}
-          <div className="text-center">
-            <Bluetooth className="w-16 h-16 text-decent-blue mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-white mb-2">
-              Connect to Decent Machine
-            </h1>
-            <p className="text-gray-400">
-              Make sure your machine is powered on and Bluetooth is enabled
-            </p>
-          </div>
+    <>
+      {showDisclaimer && (
+        <LegalDisclaimer onAccept={() => setShowDisclaimer(false)} />
+      )}
+      <div className="flex flex-col min-h-full">
+        <div className="flex-1 flex flex-col items-center justify-center p-6">
+          <div className="max-w-md w-full space-y-6">
+            {/* Header */}
+            <div className="text-center">
+              <Bluetooth className="w-16 h-16 text-decent-blue mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-white mb-2">
+                Connect to Decent Machine
+              </h1>
+              <p className="text-gray-400">
+                Make sure your machine is powered on and Bluetooth is enabled
+              </p>
+            </div>
 
           {/* Requirements Checklist */}
           <div className="bg-gray-800 rounded-lg p-6 space-y-3">
@@ -158,9 +172,20 @@ export default function ConnectionPage() {
           </button>
 
           {showTroubleshooting && <TroubleshootingSection />}
+
+          {/* Footer Info */}
+          <div className="text-center space-y-2 pt-4">
+            <p className="text-xs text-gray-600">
+              v1.0.0 • Unofficial educational project • Not affiliated with Decent Espresso Ltd.
+            </p>
+            <p className="text-xs text-gray-700">
+              Use at your own risk • All trademarks belong to their respective owners
+            </p>
+          </div>
         </div>
       </div>
     </div>
+    </>
   )
 }
 

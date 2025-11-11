@@ -239,8 +239,8 @@ export default function SettingsPage() {
           />
         </div>
 
-        <div className="pt-3 border-t border-gray-700 text-xs text-gray-500">
-          <p className="mb-2">
+        <div className="pt-3 border-t border-gray-700 text-xs text-gray-500 space-y-2">
+          <p>
             Decent Espresso Control - Full-featured control toolkit for Decent
             espresso machines
           </p>
@@ -251,13 +251,31 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Support */}
-      <div className="bg-gray-800 rounded-lg p-4 space-y-2">
-        <h2 className="text-lg font-semibold text-white">Support</h2>
-        <p className="text-sm text-gray-400">
-          For help and support, please visit the Decent Espresso forums or contact
-          support.
-        </p>
+      {/* Legal Disclaimer */}
+      <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4 space-y-2">
+        <h2 className="text-lg font-semibold text-yellow-400 flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5" />
+          Disclaimer
+        </h2>
+        <div className="text-xs text-yellow-300/90 space-y-2 leading-relaxed">
+          <p>
+            <strong>Educational & Demo Purpose:</strong> This application is provided for educational
+            and demonstration purposes only. Use at your own risk.
+          </p>
+          <p>
+            <strong>Not Affiliated:</strong> This project is not affiliated with, endorsed by, or
+            sponsored by Decent Espresso Ltd. All trademarks and intellectual property rights
+            belong to their respective owners.
+          </p>
+          <p>
+            <strong>No Warranty:</strong> This software is provided "AS IS" without warranty of any kind.
+            The developers assume no liability for damages, injuries, or equipment malfunction.
+          </p>
+          <p>
+            <strong>Safety:</strong> Espresso machines operate at high temperatures and pressures.
+            Always follow manufacturer safety guidelines and never leave machines unattended.
+          </p>
+        </div>
       </div>
     </div>
   )
