@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useMachineStore } from '../stores/machineStore'
 import { useShotStore } from '../stores/shotStore'
 import { useRecipeStore } from '../stores/recipeStore'

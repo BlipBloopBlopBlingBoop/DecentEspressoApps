@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom'
 import {
   Wifi,
   Home,
-  LayoutDashboard,
   Sliders,
   BookOpen,
   History,
