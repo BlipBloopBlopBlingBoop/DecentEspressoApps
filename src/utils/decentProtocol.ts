@@ -31,12 +31,14 @@ export function parseShotSample(dataView: DataView): ShotSampleData {
     throw new Error(`Invalid ShotSample data length: ${dataView.byteLength}, expected 19`)
   }
 
-  // Parse 24-bit HeadTemp (bytes 8-10)
-  const headTempByte1 = dataView.getUint8(8)
-  const headTempByte2 = dataView.getUint8(9)
-  const headTempByte3 = dataView.getUint8(10)
+  // Parse 24-bit HeadTemp (bytes 8-10) - Big Endian, unsigned
+  // The 24-bit value is spread across 3 bytes and needs proper masking
+  const headTempByte1 = dataView.getUint8(8) & 0xFF
+  const headTempByte2 = dataView.getUint8(9) & 0xFF
+  const headTempByte3 = dataView.getUint8(10) & 0xFF
   const headTempRaw = (headTempByte1 << 16) | (headTempByte2 << 8) | headTempByte3
-  const headTemp = headTempRaw / 256.0
+  // Ensure we don't overflow and scale correctly
+  const headTemp = (headTempRaw & 0xFFFFFF) / 256.0
 
   return {
     sampleTime: dataView.getUint16(0, false),            // Big-endian
