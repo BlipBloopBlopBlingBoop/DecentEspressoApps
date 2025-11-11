@@ -110,7 +110,8 @@ export default function ControlPage() {
     }
   }
 
-  const canStartEspresso = state?.state === 'ready' && !isActive
+  // Allow espresso from idle, warming, or ready states (machine needs to be warmed up first)
+  const canStartEspresso = (state?.state === 'idle' || state?.state === 'warming' || state?.state === 'ready') && !isActive
 
   return (
     <div className="p-4 space-y-4">

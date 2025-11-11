@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   Wifi,
+  Home,
   LayoutDashboard,
   Sliders,
   BookOpen,
@@ -15,7 +16,7 @@ export default function Navigation() {
 
   const navItems = [
     { to: '/connect', icon: Wifi, label: 'Connect', alwaysShow: true },
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/home', icon: Home, label: 'Home' },
     { to: '/control', icon: Sliders, label: 'Control' },
     { to: '/recipes', icon: BookOpen, label: 'Recipes' },
     { to: '/history', icon: History, label: 'History' },
