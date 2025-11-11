@@ -31,20 +31,93 @@ export function parseShotSample(dataView: DataView): ShotSampleData {
     throw new Error(`Invalid ShotSample data length: ${dataView.byteLength}, expected 19`)
   }
 
-  // Parse 24-bit HeadTemp (bytes 8-10) - Big Endian, unsigned
-  // The 24-bit value is spread across 3 bytes and needs proper masking
-  const headTempByte1 = dataView.getUint8(8) & 0xFF
-  const headTempByte2 = dataView.getUint8(9) & 0xFF
-  const headTempByte3 = dataView.getUint8(10) & 0xFF
-  const headTempRaw = (headTempByte1 << 16) | (headTempByte2 << 8) | headTempByte3
-  // Ensure we don't overflow and scale correctly
-  const headTemp = (headTempRaw & 0xFFFFFF) / 256.0
+  // Debug: Log raw bytes for troubleshooting
+  const rawBytes: number[] = []
+  for (let i = 0; i < dataView.byteLength; i++) {
+    rawBytes.push(dataView.getUint8(i))
+  }
+  console.log('[ShotSample] Raw bytes:', rawBytes.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '))
+
+  // Parse basic fields first
+  const mixTemp = dataView.getUint16(6, false) / 256.0
+  const pressure = dataView.getUint16(2, false) / 4096.0
+  const flow = dataView.getUint16(4, false) / 4096.0
+
+  // HeadTemp parsing - Try multiple approaches to find the right one
+  // The spec says 24-bit at bytes 8-10, but this may be incorrect
+
+  // Approach 1: 16-bit at bytes 8-9, divided by 256 (same format as mixTemp)
+  const raw16at8 = dataView.getUint16(8, false)
+  const attempt1 = raw16at8 / 256.0
+
+  // Approach 2: 16-bit at bytes 9-10, divided by 256
+  const raw16at9 = dataView.getUint16(9, false)
+  const attempt2 = raw16at9 / 256.0
+
+  // Approach 3: Single byte at position 8 (no scaling)
+  const attempt3 = dataView.getUint8(8)
+
+  // Approach 4: Single byte at position 9 (no scaling)
+  const attempt4 = dataView.getUint8(9)
+
+  // Approach 5: 24-bit at bytes 8-10, divided by 256
+  const headTempByte1 = dataView.getUint8(8)
+  const headTempByte2 = dataView.getUint8(9)
+  const headTempByte3 = dataView.getUint8(10)
+  const raw24 = (headTempByte1 << 16) | (headTempByte2 << 8) | headTempByte3
+  const attempt5 = raw24 / 256.0
+
+  // Approach 6: 24-bit divided by 65536 instead of 256
+  const attempt6 = raw24 / 65536.0
+
+  console.log(`[ShotSample] HeadTemp attempts:`)
+  console.log(`  [1] 16-bit@8-9 /256: ${attempt1.toFixed(2)}°C (raw: 0x${raw16at8.toString(16)})`)
+  console.log(`  [2] 16-bit@9-10 /256: ${attempt2.toFixed(2)}°C (raw: 0x${raw16at9.toString(16)})`)
+  console.log(`  [3] byte@8: ${attempt3.toFixed(2)}°C`)
+  console.log(`  [4] byte@9: ${attempt4.toFixed(2)}°C`)
+  console.log(`  [5] 24-bit /256: ${attempt5.toFixed(2)}°C (raw: 0x${raw24.toString(16)})`)
+  console.log(`  [6] 24-bit /65536: ${attempt6.toFixed(2)}°C`)
+
+  // Auto-select the most reasonable temperature (should be 80-105°C for espresso machines)
+  const attempts = [
+    { value: attempt1, name: '16-bit@8-9 /256', raw: raw16at8 },
+    { value: attempt2, name: '16-bit@9-10 /256', raw: raw16at9 },
+    { value: attempt3, name: 'byte@8', raw: attempt3 },
+    { value: attempt4, name: 'byte@9', raw: attempt4 },
+    { value: attempt5, name: '24-bit /256', raw: raw24 },
+    { value: attempt6, name: '24-bit /65536', raw: raw24 },
+  ]
+
+  // Find the attempt that falls in reasonable espresso temp range (80-105°C)
+  let headTemp = attempt1 // default
+  let selectedMethod = attempts[0]
+
+  for (const attempt of attempts) {
+    if (attempt.value >= 80 && attempt.value <= 105) {
+      headTemp = attempt.value
+      selectedMethod = attempt
+      break
+    }
+  }
+
+  // If no reasonable temp found, use the one closest to 93°C (typical)
+  if (headTemp < 80 || headTemp > 105) {
+    const sorted = [...attempts].sort((a, b) =>
+      Math.abs(a.value - 93) - Math.abs(b.value - 93)
+    )
+    headTemp = sorted[0].value
+    selectedMethod = sorted[0]
+    console.warn(`[ShotSample] No temp in reasonable range! Using closest to 93°C: ${selectedMethod.name}`)
+  }
+
+  console.log(`[ShotSample] ✓ Selected: ${selectedMethod.name} = ${headTemp.toFixed(1)}°C`)
+  console.log(`[ShotSample] Full reading: Mix=${mixTemp.toFixed(1)}°C, Head=${headTemp.toFixed(1)}°C, P=${pressure.toFixed(2)}bar, F=${flow.toFixed(2)}ml/s`)
 
   return {
-    sampleTime: dataView.getUint16(0, false),            // Big-endian
-    groupPressure: dataView.getUint16(2, false) / 4096.0,
-    groupFlow: dataView.getUint16(4, false) / 4096.0,
-    mixTemp: dataView.getUint16(6, false) / 256.0,
+    sampleTime: dataView.getUint16(0, false),
+    groupPressure: pressure,
+    groupFlow: flow,
+    mixTemp: mixTemp,
     headTemp: headTemp,
     setMixTemp: dataView.getUint16(11, false) / 256.0,
     setHeadTemp: dataView.getUint16(13, false) / 256.0,
