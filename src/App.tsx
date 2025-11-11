@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useConnectionStore } from './stores/connectionStore'
 import Layout from './components/Layout'
 import ConnectionPage from './pages/ConnectionPage'
+import HomePage from './pages/HomePage'
 import DashboardPage from './pages/DashboardPage'
 import ControlPage from './pages/ControlPage'
 import RecipesPage from './pages/RecipesPage'
@@ -17,9 +18,10 @@ function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={
-            isConnected ? <Navigate to="/dashboard" replace /> : <Navigate to="/connect" replace />
+            isConnected ? <Navigate to="/home" replace /> : <Navigate to="/connect" replace />
           } />
           <Route path="connect" element={<ConnectionPage />} />
+          <Route path="home" element={<HomePage />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="control" element={<ControlPage />} />
           <Route path="recipes" element={<RecipesPage />} />

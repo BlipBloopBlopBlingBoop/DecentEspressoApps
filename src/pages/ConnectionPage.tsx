@@ -21,7 +21,7 @@ export default function ConnectionPage() {
   const handleConnect = async () => {
     try {
       await bluetoothService.connect()
-      navigate('/dashboard')
+      navigate('/home')
     } catch (error) {
       console.error('Connection failed:', error)
     }
@@ -30,7 +30,7 @@ export default function ConnectionPage() {
   const handleDemoMode = async () => {
     try {
       await demoService.startDemo()
-      navigate('/dashboard')
+      navigate('/home')
     } catch (error) {
       console.error('Demo mode failed:', error)
     }
