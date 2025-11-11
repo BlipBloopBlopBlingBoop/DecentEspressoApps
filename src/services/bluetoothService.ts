@@ -394,9 +394,13 @@ class BluetoothService {
    * Send a command to the machine
    */
   async sendCommand(command: DecentCommand, data?: Uint8Array): Promise<void> {
+    console.log(`[BluetoothService] sendCommand called with: ${DecentCommand[command]} (${command})`)
+
     const commandChar = this.characteristics.get('REQUESTED_STATE')
 
     if (!commandChar) {
+      console.error('[BluetoothService] REQUESTED_STATE characteristic not found!')
+      console.log('[BluetoothService] Available characteristics:', Array.from(this.characteristics.keys()))
       throw new Error('REQUESTED_STATE characteristic not available - cannot send commands')
     }
 
@@ -408,10 +412,11 @@ class BluetoothService {
         buffer.set(data, 1)
       }
 
+      console.log(`[BluetoothService] Writing command buffer:`, Array.from(buffer))
       await commandChar.writeValue(buffer)
-      console.log(`Command sent: ${DecentCommand[command]} (0x${command.toString(16).padStart(2, '0')})`)
+      console.log(`[BluetoothService] ✓ Command sent successfully: ${DecentCommand[command]} (0x${command.toString(16).padStart(2, '0')})`)
     } catch (error) {
-      console.error('Failed to send command:', error)
+      console.error('[BluetoothService] ✗ Failed to send command:', error)
       throw new Error(`Failed to send command to machine: ${error}`)
     }
   }
@@ -462,6 +467,7 @@ class BluetoothService {
    * Start espresso extraction
    */
   async startEspresso(): Promise<void> {
+    console.log('[BluetoothService] startEspresso() called')
     await this.sendCommand(DecentCommand.ESPRESSO)
 
     const shotStore = useShotStore.getState()
@@ -472,39 +478,48 @@ class BluetoothService {
       profileId: recipeStore.activeRecipe?.id,
       startTime: Date.now(),
     })
+    console.log('[BluetoothService] startEspresso() completed')
   }
 
   /**
    * Stop current operation (go to idle)
    */
   async stop(): Promise<void> {
+    console.log('[BluetoothService] stop() called')
     await this.sendCommand(DecentCommand.IDLE)
 
     const shotStore = useShotStore.getState()
     if (shotStore.isRecording) {
       shotStore.endShot()
     }
+    console.log('[BluetoothService] stop() completed')
   }
 
   /**
    * Start steam mode
    */
   async startSteam(): Promise<void> {
+    console.log('[BluetoothService] startSteam() called')
     await this.sendCommand(DecentCommand.STEAM)
+    console.log('[BluetoothService] startSteam() completed')
   }
 
   /**
    * Start flush
    */
   async startFlush(): Promise<void> {
+    console.log('[BluetoothService] startFlush() called')
     await this.sendCommand(DecentCommand.HOT_WATER_RINSE)
+    console.log('[BluetoothService] startFlush() completed')
   }
 
   /**
    * Start water dispense
    */
   async startWater(): Promise<void> {
+    console.log('[BluetoothService] startWater() called')
     await this.sendCommand(DecentCommand.HOT_WATER)
+    console.log('[BluetoothService] startWater() completed')
   }
 
   /**

@@ -31,20 +31,39 @@ export function parseShotSample(dataView: DataView): ShotSampleData {
     throw new Error(`Invalid ShotSample data length: ${dataView.byteLength}, expected 19`)
   }
 
-  // Parse 24-bit HeadTemp (bytes 8-10) - Big Endian, unsigned
-  // The 24-bit value is spread across 3 bytes and needs proper masking
-  const headTempByte1 = dataView.getUint8(8) & 0xFF
-  const headTempByte2 = dataView.getUint8(9) & 0xFF
-  const headTempByte3 = dataView.getUint8(10) & 0xFF
-  const headTempRaw = (headTempByte1 << 16) | (headTempByte2 << 8) | headTempByte3
-  // Ensure we don't overflow and scale correctly
-  const headTemp = (headTempRaw & 0xFFFFFF) / 256.0
+  // Debug: Log raw bytes for troubleshooting
+  const rawBytes: number[] = []
+  for (let i = 0; i < dataView.byteLength; i++) {
+    rawBytes.push(dataView.getUint8(i))
+  }
+  console.log('[ShotSample] Raw bytes:', rawBytes.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '))
+
+  // Parse 24-bit HeadTemp (bytes 8-10) - Big Endian
+  // Try reading as 16-bit instead since 24-bit might be wrong
+  const headTemp16bit = dataView.getUint16(8, false) / 256.0
+
+  // Also try the 24-bit approach with different byte order
+  const headTempByte1 = dataView.getUint8(8)
+  const headTempByte2 = dataView.getUint8(9)
+  const headTempByte3 = dataView.getUint8(10)
+  const headTemp24bit = ((headTempByte1 << 16) | (headTempByte2 << 8) | headTempByte3) / 256.0
+
+  console.log(`[ShotSample] HeadTemp attempts: 16-bit=${headTemp16bit.toFixed(2)}°C, 24-bit=${headTemp24bit.toFixed(2)}°C`)
+
+  // Use 16-bit value - the 24-bit spec might be incorrect or machine doesn't use it
+  const headTemp = headTemp16bit
+
+  const mixTemp = dataView.getUint16(6, false) / 256.0
+  const pressure = dataView.getUint16(2, false) / 4096.0
+  const flow = dataView.getUint16(4, false) / 4096.0
+
+  console.log(`[ShotSample] Parsed: Mix=${mixTemp.toFixed(1)}°C, Head=${headTemp.toFixed(1)}°C, P=${pressure.toFixed(2)}bar, F=${flow.toFixed(2)}ml/s`)
 
   return {
-    sampleTime: dataView.getUint16(0, false),            // Big-endian
-    groupPressure: dataView.getUint16(2, false) / 4096.0,
-    groupFlow: dataView.getUint16(4, false) / 4096.0,
-    mixTemp: dataView.getUint16(6, false) / 256.0,
+    sampleTime: dataView.getUint16(0, false),
+    groupPressure: pressure,
+    groupFlow: flow,
+    mixTemp: mixTemp,
     headTemp: headTemp,
     setMixTemp: dataView.getUint16(11, false) / 256.0,
     setHeadTemp: dataView.getUint16(13, false) / 256.0,
