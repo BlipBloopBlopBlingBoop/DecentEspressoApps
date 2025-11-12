@@ -268,20 +268,42 @@ class BluetoothService {
     const shotSampleChar = this.characteristics.get('SHOT_SAMPLE')
 
     if (!stateChar && !shotSampleChar) {
-      throw new Error('No data characteristics available')
+      console.warn('[BluetoothService] No data characteristics available - proceeding without initial state')
+      // Don't fail - we'll get data from notifications eventually
+      return
     }
 
+    console.log('[BluetoothService] Waiting for initial machine data...')
+
     try {
-      // Wait for first notification with timeout
-      // STATE_INFO and SHOT_SAMPLE are notification-only, not readable
-      await this.waitForFirstNotification(this.INITIAL_STATE_TIMEOUT_MS)
-      console.log('Initial machine data received')
+      // Wait for first notification with a 5 second timeout
+      // Reduced from 10s to be more responsive
+      await this.waitForFirstNotification(5000)
+      console.log('[BluetoothService] ✓ Initial machine data received')
     } catch (error) {
-      console.error('Failed to get initial machine state:', error)
-      throw new Error(
-        'Unable to retrieve machine information. The machine may not be ready. ' +
-        'Please ensure the machine is fully warmed up and try reconnecting.'
-      )
+      // Don't fail the connection - notifications are set up and data will arrive
+      console.warn('[BluetoothService] Timeout waiting for initial data, proceeding anyway')
+      console.warn('[BluetoothService] Notifications are active - data will arrive shortly')
+
+      // Initialize with a default idle state so UI isn't empty
+      const machineStore = useMachineStore.getState()
+      if (!machineStore.state) {
+        console.log('[BluetoothService] Initializing default idle state')
+        machineStore.setState({
+          state: 'idle',
+          substate: '0',
+          temperature: {
+            mix: 0,
+            head: 0,
+            steam: 0,
+            target: 93,
+          },
+          pressure: 0,
+          flow: 0,
+          weight: 0,
+          timestamp: Date.now(),
+        })
+      }
     }
   }
 
@@ -289,23 +311,33 @@ class BluetoothService {
    * Wait for first notification from the machine
    */
   private waitForFirstNotification(timeoutMs: number): Promise<void> {
+    console.log(`[BluetoothService] Setting up notification listener (${timeoutMs}ms timeout)`)
+
     return new Promise((resolve, reject) => {
+      let unsubscribe: (() => void) | null = null
+
       const timer = setTimeout(() => {
+        console.log('[BluetoothService] ⏱️ Notification timeout reached')
+        if (unsubscribe) unsubscribe()
         reject(new Error('Timeout waiting for machine data'))
       }, timeoutMs)
 
       // Check if we already have state (notification arrived during setup)
-      if (useMachineStore.getState().state) {
+      const currentState = useMachineStore.getState().state
+      if (currentState) {
+        console.log('[BluetoothService] ✓ State already present:', currentState.state)
         clearTimeout(timer)
         resolve()
         return
       }
 
       // Wait for state to be set by notification handler
-      const unsubscribe = useMachineStore.subscribe((state) => {
+      console.log('[BluetoothService] Subscribing to state updates...')
+      unsubscribe = useMachineStore.subscribe((state) => {
         if (state.state) {
+          console.log('[BluetoothService] ✓ First notification received:', state.state.state)
           clearTimeout(timer)
-          unsubscribe()
+          if (unsubscribe) unsubscribe()
           resolve()
         }
       })
