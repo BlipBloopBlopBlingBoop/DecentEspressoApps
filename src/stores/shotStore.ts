@@ -30,6 +30,8 @@ export const useShotStore = create<ShotStore>((set, get) => ({
       dataPoints: [],
       duration: 0,
     }
+    console.log(`[ShotStore] Starting shot: ${newShot.id}`)
+    console.log(`[ShotStore] Profile: ${newShot.profileName}`)
     set({ activeShot: newShot, isRecording: true })
   },
 
@@ -47,7 +49,10 @@ export const useShotStore = create<ShotStore>((set, get) => ({
 
   endShot: (finalWeight) => {
     const state = get()
-    if (!state.activeShot) return
+    if (!state.activeShot) {
+      console.warn('[ShotStore] endShot called but no active shot')
+      return
+    }
 
     const completedShot: ShotData = {
       ...state.activeShot,
@@ -55,10 +60,19 @@ export const useShotStore = create<ShotStore>((set, get) => ({
       finalWeight,
     }
 
-    // Save to database immediately
-    databaseService.saveShot(completedShot).catch(error => {
-      console.error('Failed to save shot to database:', error)
-    })
+    console.log(`[ShotStore] Ending shot: ${completedShot.id}`)
+    console.log(`[ShotStore] Duration: ${completedShot.duration}ms`)
+    console.log(`[ShotStore] Data points: ${completedShot.dataPoints.length}`)
+    console.log(`[ShotStore] Final weight: ${finalWeight || 0}g`)
+
+    // Save to database immediately - ALWAYS save, even with 0 data points
+    databaseService.saveShot(completedShot)
+      .then(() => {
+        console.log(`[ShotStore] ✓ Shot saved to database: ${completedShot.id}`)
+      })
+      .catch(error => {
+        console.error('[ShotStore] ✗ Failed to save shot to database:', error)
+      })
 
     set({
       shots: [completedShot, ...state.shots],
