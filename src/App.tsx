@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useConnectionStore } from './stores/connectionStore'
+import { useShotStore } from './stores/shotStore'
+import { databaseService } from './services/databaseService'
 import Layout from './components/Layout'
 import ConnectionPage from './pages/ConnectionPage'
 import HomePage from './pages/HomePage'
@@ -12,6 +15,25 @@ import AnalyticsPage from './pages/AnalyticsPage'
 
 function App() {
   const isConnected = useConnectionStore((state) => state.connected)
+
+  // Initialize database and load all data on app start
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        console.log('[App] Initializing database...')
+        await databaseService.init()
+
+        // Load all shots from database
+        const shots = await databaseService.getAllShots()
+        console.log(`[App] Loaded ${shots.length} shots from database`)
+        useShotStore.getState().loadShots(shots)
+      } catch (error) {
+        console.error('[App] Failed to initialize database:', error)
+      }
+    }
+
+    initializeApp()
+  }, [])
 
   return (
     <BrowserRouter>
