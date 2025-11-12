@@ -4,6 +4,7 @@ import { useShotStore } from '../stores/shotStore'
 import { useRecipeStore } from '../stores/recipeStore'
 import { bluetoothService } from '../services/bluetoothService'
 import { demoService } from '../services/demoService'
+import Joystick from '../components/Joystick'
 import {
   LineChart,
   Line,
@@ -149,6 +150,28 @@ export default function HomePage() {
     } catch (error) {
       console.error('[HomePage] Failed to start water:', error)
       alert(`Failed to start water: ${error}`)
+    }
+  }
+
+  const handleJoystickUpdate = (flowAdjust: number, pressureAdjust: number) => {
+    // flowAdjust: -1 to 1 (left to right)
+    // pressureAdjust: -1 to 1 (down to up)
+    console.log(`[HomePage] Joystick: Flow ${(flowAdjust * 100).toFixed(0)}%, Pressure ${(pressureAdjust * 100).toFixed(0)}%`)
+
+    // Only send commands if we're actively brewing
+    if (state?.state !== 'brewing') {
+      return
+    }
+
+    // Send live adjustments to machine
+    if (isDemoMode) {
+      // In demo mode, could simulate the adjustments
+      console.log('[HomePage] Demo mode - joystick adjustments simulated')
+    } else {
+      // Send adjustment commands via Bluetooth
+      // Note: This requires MMR protocol implementation
+      console.log('[HomePage] Live adjustment - would send via Bluetooth')
+      // bluetoothService.adjustFlowPressure(flowAdjust, pressureAdjust)
     }
   }
 
@@ -436,6 +459,25 @@ export default function HomePage() {
                 disabled={false}
               />
             </div>
+          </div>
+
+          {/* Live Control Joystick */}
+          <div className="bg-gray-800 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+              Live Control
+            </h3>
+            <div className="flex justify-center">
+              <Joystick
+                onUpdate={handleJoystickUpdate}
+                size={180}
+                disabled={state.state !== 'brewing'}
+              />
+            </div>
+            {state.state !== 'brewing' && (
+              <p className="text-xs text-gray-500 text-center mt-3">
+                Active only during brewing
+              </p>
+            )}
           </div>
 
           {/* Status Details */}

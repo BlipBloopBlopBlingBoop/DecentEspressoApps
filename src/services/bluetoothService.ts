@@ -17,7 +17,6 @@ class BluetoothService {
   private characteristics: Map<string, BluetoothRemoteGATTCharacteristic> = new Map()
   private dataUpdateInterval: number | null = null
   private readonly READ_TIMEOUT_MS = 5000 // 5 second timeout for reads
-  private readonly INITIAL_STATE_TIMEOUT_MS = 10000 // 10 second timeout for initial connection
 
   /**
    * Check if Web Bluetooth is supported
