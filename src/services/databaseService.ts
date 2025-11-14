@@ -68,7 +68,21 @@ class DatabaseService {
    */
   async getAllRecipes(): Promise<Recipe[]> {
     await this.ensureDb()
-    return await this.db!.getAll('recipes')
+    const recipes = await this.db!.getAll('recipes')
+    
+    if (recipes.length === 0) {
+      await this.initializePrebuiltProfiles()
+      return await this.db!.getAll('recipes')
+    }
+    
+    return recipes
+  }
+
+  async initializePrebuiltProfiles(): Promise<void> {
+    const { prebuiltProfiles } = await import('../data/prebuiltProfiles')
+    for (const profile of prebuiltProfiles) {
+      await this.saveRecipe(profile)
+    }
   }
 
   async getRecipe(id: string): Promise<Recipe | undefined> {
