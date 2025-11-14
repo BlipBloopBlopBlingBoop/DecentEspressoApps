@@ -45,10 +45,14 @@ export default function HistoryPage() {
   }
 
   const handleUpdateRating = async (id: string, rating: number) => {
-    useShotStore.getState().updateShot(id, { rating })
     const shot = shots.find((s) => s.id === id)
     if (shot) {
-      await databaseService.saveShot({ ...shot, rating })
+      const updatedShot = { ...shot, rating }
+      useShotStore.getState().updateShot(id, { rating })
+      await databaseService.saveShot(updatedShot)
+      if (selectedShot?.id === id) {
+        setSelectedShot(updatedShot)
+      }
     }
   }
 
