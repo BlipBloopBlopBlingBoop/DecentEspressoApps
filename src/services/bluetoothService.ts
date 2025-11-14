@@ -266,43 +266,37 @@ class BluetoothService {
     const stateChar = this.characteristics.get('STATE_INFO')
     const shotSampleChar = this.characteristics.get('SHOT_SAMPLE')
 
+    console.log('[BluetoothService] Initializing default state immediately')
+    
+    const machineStore = useMachineStore.getState()
+    machineStore.setState({
+      state: 'idle',
+      substate: '0',
+      temperature: {
+        mix: 0,
+        head: 0,
+        steam: 0,
+        target: 93,
+      },
+      pressure: 0,
+      flow: 0,
+      weight: 0,
+      timestamp: Date.now(),
+    })
+
     if (!stateChar && !shotSampleChar) {
-      console.warn('[BluetoothService] No data characteristics available - proceeding without initial state')
-      // Don't fail - we'll get data from notifications eventually
+      console.warn('[BluetoothService] No data characteristics available - using default state')
       return
     }
 
     console.log('[BluetoothService] Waiting for initial machine data...')
 
     try {
-      // Wait for first notification with a 5 second timeout
-      // Reduced from 10s to be more responsive
       await this.waitForFirstNotification(5000)
       console.log('[BluetoothService] ✓ Initial machine data received')
     } catch (error) {
-      // Don't fail the connection - notifications are set up and data will arrive
-      console.warn('[BluetoothService] Timeout waiting for initial data, proceeding anyway')
+      console.warn('[BluetoothService] Timeout waiting for initial data, using default state')
       console.warn('[BluetoothService] Notifications are active - data will arrive shortly')
-
-      // Initialize with a default idle state so UI isn't empty
-      const machineStore = useMachineStore.getState()
-      if (!machineStore.state) {
-        console.log('[BluetoothService] Initializing default idle state')
-        machineStore.setState({
-          state: 'idle',
-          substate: '0',
-          temperature: {
-            mix: 0,
-            head: 0,
-            steam: 0,
-            target: 93,
-          },
-          pressure: 0,
-          flow: 0,
-          weight: 0,
-          timestamp: Date.now(),
-        })
-      }
     }
   }
 
