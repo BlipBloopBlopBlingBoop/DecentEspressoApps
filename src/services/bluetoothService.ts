@@ -5,6 +5,7 @@ import {
   DECENT_SERVICE_UUID,
   DECENT_CHARACTERISTICS,
   ShotProfile,
+  ProfileStep,
 } from '../types/decent'
 import { parseStateInfo, parseShotSample, mapStateToType } from '../utils/decentProtocol'
 import { useConnectionStore } from '../stores/connectionStore'
@@ -17,6 +18,8 @@ class BluetoothService {
   private characteristics: Map<string, BluetoothRemoteGATTCharacteristic> = new Map()
   private dataUpdateInterval: number | null = null
   private readonly READ_TIMEOUT_MS = 5000 // 5 second timeout for reads
+  private gattQueue: Promise<void> = Promise.resolve()
+  private readonly GATT_WRITE_DELAY_MS = 50 // Small delay between GATT operations
 
   /**
    * Check if Web Bluetooth is supported
@@ -416,6 +419,28 @@ class BluetoothService {
 
 
   /**
+   * Queue a GATT write operation to prevent overlapping operations
+   */
+  private queueGattOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = this.gattQueue.then(
+      async () => {
+        await new Promise(resolve => setTimeout(resolve, this.GATT_WRITE_DELAY_MS))
+        return operation()
+      },
+      async () => {
+        // Ignore previous operation failures and continue with this operation
+        await new Promise(resolve => setTimeout(resolve, this.GATT_WRITE_DELAY_MS))
+        return operation()
+      }
+    )
+    
+    // Update the queue to include this operation
+    this.gattQueue = queued.then(() => {}, () => {})
+    
+    return queued
+  }
+
+  /**
    * Send a command to the machine
    */
   async sendCommand(command: DecentCommand, data?: Uint8Array): Promise<void> {
@@ -429,21 +454,23 @@ class BluetoothService {
       throw new Error('REQUESTED_STATE characteristic not available - cannot send commands')
     }
 
-    try {
-      // Commands are single bytes written to REQUESTED_STATE (A002)
-      const buffer = new Uint8Array(data ? data.length + 1 : 1)
-      buffer[0] = command
-      if (data) {
-        buffer.set(data, 1)
-      }
+    return this.queueGattOperation(async () => {
+      try {
+        // Commands are single bytes written to REQUESTED_STATE (A002)
+        const buffer = new Uint8Array(data ? data.length + 1 : 1)
+        buffer[0] = command
+        if (data) {
+          buffer.set(data, 1)
+        }
 
-      console.log(`[BluetoothService] Writing command buffer:`, Array.from(buffer))
-      await commandChar.writeValue(buffer)
-      console.log(`[BluetoothService] ✓ Command sent successfully: ${DecentCommand[command]} (0x${command.toString(16).padStart(2, '0')})`)
-    } catch (error) {
-      console.error('[BluetoothService] ✗ Failed to send command:', error)
-      throw new Error(`Failed to send command to machine: ${error}`)
-    }
+        console.log(`[BluetoothService] Writing command buffer:`, Array.from(buffer))
+        await commandChar.writeValue(buffer)
+        console.log(`[BluetoothService] ✓ Command sent successfully: ${DecentCommand[command]} (0x${command.toString(16).padStart(2, '0')})`)
+      } catch (error) {
+        console.error('[BluetoothService] ✗ Failed to send command:', error)
+        throw new Error(`Failed to send command to machine: ${error}`)
+      }
+    })
   }
 
   /**
@@ -493,14 +520,28 @@ class BluetoothService {
    */
   async startEspresso(): Promise<void> {
     console.log('[BluetoothService] startEspresso() called')
+    
+    const recipeStore = useRecipeStore.getState()
+    const activeRecipe = recipeStore.activeRecipe
+
+    if (activeRecipe) {
+      console.log('[BluetoothService] Active recipe found:', activeRecipe.name)
+      try {
+        await this.uploadProfile(activeRecipe)
+        console.log('[BluetoothService] ✓ Profile uploaded successfully')
+      } catch (error) {
+        console.error('[BluetoothService] Failed to upload profile, continuing anyway:', error)
+      }
+    } else {
+      console.log('[BluetoothService] No active recipe - using machine default profile')
+    }
+
     await this.sendCommand(DecentCommand.ESPRESSO)
 
     const shotStore = useShotStore.getState()
-    const recipeStore = useRecipeStore.getState()
-
     shotStore.startShot({
-      profileName: recipeStore.activeRecipe?.name || 'Manual',
-      profileId: recipeStore.activeRecipe?.id,
+      profileName: activeRecipe?.name || 'Manual',
+      profileId: activeRecipe?.id,
       startTime: Date.now(),
     })
     console.log('[BluetoothService] startEspresso() completed')
@@ -548,37 +589,178 @@ class BluetoothService {
   }
 
   /**
-   * Set target temperature
-   * Note: Temperature setting via WriteToMMR requires MMR protocol
-   * This is a placeholder - full implementation requires MMR writes
+   * Set target temperature via MMR protocol
    */
-  async setTemperature(_temperature: number): Promise<void> {
-    console.warn('Temperature setting requires MMR protocol - not yet implemented')
-    // TODO: Implement MMR write for temperature control
+  async setTemperature(temperature: number): Promise<void> {
+    console.log(`[BluetoothService] setTemperature(${temperature}) called`)
+    await this.writeMMR(0x80, temperature)
+    console.log('[BluetoothService] ✓ Temperature set via MMR')
   }
 
   /**
-   * Upload a shot profile to the machine
+   * Adjust flow and pressure in real-time during extraction (MMR protocol)
    */
-  async uploadProfile(profile: ShotProfile): Promise<void> {
-    const profileChar = this.characteristics.get('SHOT_PROFILE')
+  async adjustFlowPressure(flowAdjust: number, pressureAdjust: number): Promise<void> {
+    console.log(`[BluetoothService] adjustFlowPressure(flow=${flowAdjust.toFixed(2)}, pressure=${pressureAdjust.toFixed(2)})`)
+    
+    await this.writeMMR(0x82, flowAdjust)
+    await this.writeMMR(0x83, pressureAdjust)
+    
+    console.log('[BluetoothService] ✓ Flow/Pressure adjustments sent via MMR')
+  }
 
-    if (!profileChar) {
-      throw new Error('Profile characteristic not available')
+  /**
+   * Estimate extraction time from target weight and flow rate
+   * Uses approximation: time ≈ weight / flow, with some buffer for preinfusion and puck resistance
+   */
+  private estimateTimeFromWeight(targetWeight: number, flowRate: number): number {
+    const baseTime = targetWeight / flowRate
+    const bufferMultiplier = 1.3
+    const estimatedTime = Math.round(baseTime * bufferMultiplier)
+    return Math.max(estimatedTime, 15)
+  }
+
+  /**
+   * Write to Machine Memory Register (MMR)
+   */
+  private async writeMMR(address: number, value: number): Promise<void> {
+    const mmrChar = this.characteristics.get('WRITE_TO_MMR')
+
+    if (!mmrChar) {
+      throw new Error('WRITE_TO_MMR characteristic not available')
     }
 
-    // Convert profile to binary format (simplified - actual format depends on machine)
-    const profileData = this.encodeProfile(profile)
-    await profileChar.writeValue(profileData as BufferSource)
+    return this.queueGattOperation(async () => {
+      const buffer = new Uint8Array(5)
+      buffer[0] = address
+      
+      const valueScaled = Math.round(value * 256)
+      buffer[1] = (valueScaled >> 24) & 0xFF
+      buffer[2] = (valueScaled >> 16) & 0xFF
+      buffer[3] = (valueScaled >> 8) & 0xFF
+      buffer[4] = valueScaled & 0xFF
+
+      await mmrChar.writeValue(buffer)
+    })
   }
 
   /**
-   * Encode profile to binary format
+   * Upload a shot profile to the machine using HEADER_WRITE and FRAME_WRITE
    */
-  private encodeProfile(profile: ShotProfile): Uint8Array {
-    // This is a placeholder - actual encoding depends on Decent's protocol
-    const encoder = new TextEncoder()
-    return encoder.encode(JSON.stringify(profile))
+  async uploadProfile(profile: ShotProfile): Promise<void> {
+    console.log('[BluetoothService] uploadProfile() called for profile:', profile.name)
+    
+    const headerChar = this.characteristics.get('HEADER_WRITE')
+    const frameChar = this.characteristics.get('FRAME_WRITE')
+
+    if (!headerChar || !frameChar) {
+      console.error('[BluetoothService] Profile upload characteristics not available')
+      throw new Error('Profile upload characteristics (HEADER_WRITE/FRAME_WRITE) not available')
+    }
+
+    try {
+      const headerData = this.encodeProfileHeader(profile)
+      console.log('[BluetoothService] Writing profile header...', headerData)
+      
+      await this.queueGattOperation(async () => {
+        await headerChar.writeValue(headerData)
+      })
+      console.log('[BluetoothService] ✓ Profile header written')
+
+      for (let i = 0; i < profile.steps.length; i++) {
+        const frameData = this.encodeProfileFrame(profile.steps[i], i)
+        console.log(`[BluetoothService] Writing frame ${i}...`, frameData)
+        
+        await this.queueGattOperation(async () => {
+          await frameChar.writeValue(frameData)
+        })
+        console.log(`[BluetoothService] ✓ Frame ${i} written`)
+      }
+
+      console.log('[BluetoothService] ✓ Profile upload complete')
+    } catch (error) {
+      console.error('[BluetoothService] Failed to upload profile:', error)
+      throw new Error(`Failed to upload profile: ${error}`)
+    }
+  }
+
+  /**
+   * Encode profile header to binary format (Decent protocol)
+   */
+  private encodeProfileHeader(profile: ShotProfile): Uint8Array<ArrayBuffer> {
+    const buffer = new Uint8Array(new ArrayBuffer(5)) as Uint8Array<ArrayBuffer>
+    buffer[0] = profile.steps.length // Number of frames
+    buffer[1] = 0x01 // Profile type: pressure/flow
+    buffer[2] = 0x00 // Reserved
+    buffer[3] = 0x00 // Reserved
+    buffer[4] = 0x00 // Reserved
+    return buffer
+  }
+
+  /**
+   * Encode a single profile frame (step) to binary format
+   */
+  private encodeProfileFrame(step: ProfileStep, frameNumber: number): Uint8Array<ArrayBuffer> {
+    const buffer = new Uint8Array(new ArrayBuffer(21)) as Uint8Array<ArrayBuffer>
+    
+    buffer[0] = frameNumber
+    
+    buffer[1] = 0x01 // Frame flag: pressure + flow control
+    
+    const tempScaled = Math.round(step.temperature * 256)
+    buffer[2] = (tempScaled >> 8) & 0xFF
+    buffer[3] = tempScaled & 0xFF
+    
+    const pressureScaled = Math.round(step.pressure * 16)
+    buffer[4] = pressureScaled & 0xFF
+    
+    const flowScaled = Math.round(step.flow * 16)
+    buffer[5] = flowScaled & 0xFF
+    
+    if (step.exit.type === 'time') {
+      buffer[6] = 0x01
+      const timeScaled = Math.round(step.exit.value * 10)
+      buffer[7] = (timeScaled >> 8) & 0xFF
+      buffer[8] = timeScaled & 0xFF
+    } else if (step.exit.type === 'weight') {
+      console.log(`[BluetoothService] Converting weight-based exit (${step.exit.value}g) to time-based exit for frame ${frameNumber}`)
+      buffer[6] = 0x01
+      const estimatedTime = this.estimateTimeFromWeight(step.exit.value, step.flow)
+      const timeScaled = Math.round(estimatedTime * 10)
+      buffer[7] = (timeScaled >> 8) & 0xFF
+      buffer[8] = timeScaled & 0xFF
+      console.log(`[BluetoothService] Estimated time: ${estimatedTime}s for ${step.exit.value}g at ${step.flow}ml/s flow`)
+    } else if (step.exit.type === 'pressure') {
+      buffer[6] = 0x03
+      const pressureScaled = Math.round(step.exit.value * 16)
+      buffer[7] = pressureScaled & 0xFF
+      buffer[8] = 0x00
+    } else if (step.exit.type === 'flow') {
+      buffer[6] = 0x04
+      const flowScaled = Math.round(step.exit.value * 16)
+      buffer[7] = flowScaled & 0xFF
+      buffer[8] = 0x00
+    }
+    
+    buffer[9] = step.transition === 'fast' ? 0x01 : 0x00
+    
+    if (step.limiter) {
+      buffer[10] = 0x01
+      const limiterValue = Math.round(step.limiter.value * 16)
+      buffer[11] = limiterValue & 0xFF
+      const limiterRange = Math.round(step.limiter.range * 16)
+      buffer[12] = limiterRange & 0xFF
+    } else {
+      buffer[10] = 0x00
+      buffer[11] = 0x00
+      buffer[12] = 0x00
+    }
+    
+    for (let i = 13; i < 21; i++) {
+      buffer[i] = 0x00
+    }
+    
+    return buffer
   }
 
   /**
