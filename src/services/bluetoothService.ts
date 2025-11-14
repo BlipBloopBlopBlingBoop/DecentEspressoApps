@@ -686,81 +686,140 @@ class BluetoothService {
 
   /**
    * Encode profile header to binary format (Decent protocol)
+   *
+   * Based on TCL spec_shotdescheader from binary.tcl:
+   * Byte 0: HeaderV (version = 1)
+   * Byte 1: NumberOfFrames (total steps)
+   * Byte 2: NumberOfPreinfuseFrames (steps before main extraction)
+   * Byte 3: MinimumPressure (scaled * 16, for flow priority mode)
+   * Byte 4: MaximumFlow (scaled * 16, for pressure priority mode)
    */
   private encodeProfileHeader(profile: ShotProfile): Uint8Array<ArrayBuffer> {
     const buffer = new Uint8Array(new ArrayBuffer(5)) as Uint8Array<ArrayBuffer>
-    buffer[0] = profile.steps.length // Number of frames
-    buffer[1] = 0x01 // Profile type: pressure/flow
-    buffer[2] = 0x00 // Reserved
-    buffer[3] = 0x00 // Reserved
-    buffer[4] = 0x00 // Reserved
+
+    // Byte 0: Header version (always 1)
+    buffer[0] = 0x01
+
+    // Byte 1: Total number of frames/steps
+    buffer[1] = profile.steps.length & 0xFF
+
+    // Byte 2: Number of preinfusion frames
+    // For now, we consider the first step as preinfusion if it has low pressure/flow
+    let preinfuseFrames = 0
+    if (profile.steps.length > 0) {
+      const firstStep = profile.steps[0]
+      if (firstStep.pressure <= 4 && firstStep.flow <= 3) {
+        preinfuseFrames = 1
+      }
+    }
+    buffer[2] = preinfuseFrames
+
+    // Byte 3: Minimum pressure (for flow priority mode)
+    // Setting to 0 means no minimum constraint
+    buffer[3] = 0x00
+
+    // Byte 4: Maximum flow (for pressure priority mode)
+    // Set to a safe default of 6 ml/s (scaled * 16 = 96)
+    buffer[4] = Math.round(6.0 * 16) & 0xFF
+
+    console.log(`[BluetoothService] Profile header: version=1, frames=${profile.steps.length}, preinfuse=${preinfuseFrames}, minP=0, maxF=6.0ml/s`)
+
     return buffer
   }
 
   /**
    * Encode a single profile frame (step) to binary format
+   *
+   * Based on TCL spec_shotframe from binary.tcl:
+   * Byte 0: FrameToWrite (frame number)
+   * Byte 1: Flag (frame control flags)
+   * Byte 2: SetVal (pressure or flow, scaled * 16)
+   * Byte 3: Temp (temperature, scaled * 2)
+   * Byte 4: FrameLen (frame duration in F8_1_7 format)
+   * Byte 5: TriggerVal (exit condition value, scaled * 16)
+   * Bytes 6-7: MaxVol (max volume, 16-bit)
    */
   private encodeProfileFrame(step: ProfileStep, frameNumber: number): Uint8Array<ArrayBuffer> {
-    const buffer = new Uint8Array(new ArrayBuffer(21)) as Uint8Array<ArrayBuffer>
-    
+    const buffer = new Uint8Array(new ArrayBuffer(8)) as Uint8Array<ArrayBuffer>
+
+    // Byte 0: Frame number
     buffer[0] = frameNumber
-    
-    buffer[1] = 0x01 // Frame flag: pressure + flow control
-    
-    const tempScaled = Math.round(step.temperature * 256)
-    buffer[2] = (tempScaled >> 8) & 0xFF
-    buffer[3] = tempScaled & 0xFF
-    
-    const pressureScaled = Math.round(step.pressure * 16)
-    buffer[4] = pressureScaled & 0xFF
-    
-    const flowScaled = Math.round(step.flow * 16)
-    buffer[5] = flowScaled & 0xFF
-    
-    if (step.exit.type === 'time') {
-      buffer[6] = 0x01
-      const timeScaled = Math.round(step.exit.value * 10)
-      buffer[7] = (timeScaled >> 8) & 0xFF
-      buffer[8] = timeScaled & 0xFF
-    } else if (step.exit.type === 'weight') {
-      console.log(`[BluetoothService] Converting weight-based exit (${step.exit.value}g) to time-based exit for frame ${frameNumber}`)
-      buffer[6] = 0x01
-      const estimatedTime = this.estimateTimeFromWeight(step.exit.value, step.flow)
-      const timeScaled = Math.round(estimatedTime * 10)
-      buffer[7] = (timeScaled >> 8) & 0xFF
-      buffer[8] = timeScaled & 0xFF
-      console.log(`[BluetoothService] Estimated time: ${estimatedTime}s for ${step.exit.value}g at ${step.flow}ml/s flow`)
-    } else if (step.exit.type === 'pressure') {
-      buffer[6] = 0x03
-      const pressureScaled = Math.round(step.exit.value * 16)
-      buffer[7] = pressureScaled & 0xFF
-      buffer[8] = 0x00
-    } else if (step.exit.type === 'flow') {
-      buffer[6] = 0x04
-      const flowScaled = Math.round(step.exit.value * 16)
-      buffer[7] = flowScaled & 0xFF
-      buffer[8] = 0x00
+
+    // Byte 1: Frame flag
+    // Determine if this is flow control (CtrlF) or pressure control
+    // The Decent machine uses EITHER pressure OR flow mode per step, not both
+    // We prefer pressure mode unless pressure is 0 and flow is set
+    const isFlowControl = step.pressure === 0 && step.flow > 0
+    let flag = 0x00
+
+    if (isFlowControl) {
+      flag |= 0x01 // CtrlF - Flow priority mode
     }
-    
-    buffer[9] = step.transition === 'fast' ? 0x01 : 0x00
-    
-    if (step.limiter) {
-      buffer[10] = 0x01
-      const limiterValue = Math.round(step.limiter.value * 16)
-      buffer[11] = limiterValue & 0xFF
-      const limiterRange = Math.round(step.limiter.range * 16)
-      buffer[12] = limiterRange & 0xFF
-    } else {
-      buffer[10] = 0x00
-      buffer[11] = 0x00
-      buffer[12] = 0x00
+    // Otherwise, it's pressure mode (CtrlP = 0, default)
+
+    // Add Interpolate flag if smooth transition
+    if (step.transition === 'smooth') {
+      flag |= 0x20 // Interpolate
     }
-    
-    for (let i = 13; i < 21; i++) {
-      buffer[i] = 0x00
+
+    // Always set IgnoreLimit for now (no max pressure/flow constraints)
+    flag |= 0x40 // IgnoreLimit
+
+    buffer[1] = flag
+
+    // Byte 2: SetVal (pressure or flow, depending on flag)
+    const setVal = isFlowControl ? step.flow : step.pressure
+    const setValScaled = Math.round(setVal * 16) & 0xFF
+    buffer[2] = setValScaled
+
+    // Byte 3: Temp (temperature in 0.5°C steps)
+    buffer[3] = Math.round(step.temperature * 2) & 0xFF
+
+    // Byte 4: FrameLen (duration in F8_1_7 format)
+    let frameDuration = step.exit.value
+    if (step.exit.type === 'weight') {
+      // Convert weight to estimated time
+      frameDuration = this.estimateTimeFromWeight(step.exit.value, step.flow)
+      console.log(`[BluetoothService] Converting weight ${step.exit.value}g to time ${frameDuration}s for frame ${frameNumber}`)
     }
-    
+    buffer[4] = this.convertToF8_1_7(frameDuration)
+
+    console.log(`[BluetoothService] Frame ${frameNumber}: ${isFlowControl ? 'FLOW' : 'PRESSURE'} mode, SetVal=${setVal.toFixed(2)} (0x${setValScaled.toString(16).padStart(2, '0')}), Temp=${step.temperature}°C, Duration=${frameDuration}s`)
+
+    // Byte 5: TriggerVal (exit condition trigger value)
+    // For now, we use time-based exits, so this is mostly unused
+    buffer[5] = 0x00
+
+    // Bytes 6-7: MaxVol (maximum volume for this step, 16-bit)
+    // Setting to 0 means no volume limit
+    buffer[6] = 0x00
+    buffer[7] = 0x00
+
     return buffer
+  }
+
+  /**
+   * Convert a float time value to F8_1_7 format
+   *
+   * F8_1_7 is a special 8-bit floating point format used by Decent:
+   * - If value < 12.75: multiply by 10 (gives 0.1 second resolution)
+   * - If value >= 12.75: use value directly with bit 7 set (1 second resolution)
+   *
+   * Based on convert_float_to_F8_1_7 from binary.tcl
+   */
+  private convertToF8_1_7(value: number): number {
+    if (value >= 12.75) {
+      // For values >= 12.75 seconds, use integer seconds with high bit set
+      const intVal = Math.round(value)
+      if (intVal > 127) {
+        console.warn(`[BluetoothService] Frame duration ${value}s exceeds maximum 127s, capping at 127s`)
+        return 127 | 128
+      }
+      return intVal | 128 // Set bit 7 to indicate integer mode
+    } else {
+      // For values < 12.75 seconds, use 0.1 second resolution
+      return Math.round(value * 10) & 0x7F
+    }
   }
 
   /**
