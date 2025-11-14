@@ -670,12 +670,21 @@ class BluetoothService {
       for (let i = 0; i < profile.steps.length; i++) {
         const frameData = this.encodeProfileFrame(profile.steps[i], i)
         console.log(`[BluetoothService] Writing frame ${i}...`, frameData)
-        
+
         await this.queueGattOperation(async () => {
           await frameChar.writeValue(frameData)
         })
         console.log(`[BluetoothService] ✓ Frame ${i} written`)
       }
+
+      // Write tail frame to signal end of profile
+      const tailData = this.encodeProfileTail(profile.steps.length)
+      console.log('[BluetoothService] Writing tail frame...', tailData)
+
+      await this.queueGattOperation(async () => {
+        await frameChar.writeValue(tailData)
+      })
+      console.log('[BluetoothService] ✓ Tail frame written')
 
       console.log('[BluetoothService] ✓ Profile upload complete')
     } catch (error) {
@@ -790,10 +799,40 @@ class BluetoothService {
     // For now, we use time-based exits, so this is mostly unused
     buffer[5] = 0x00
 
-    // Bytes 6-7: MaxVol (maximum volume for this step, 16-bit)
+    // Bytes 6-7: MaxVol (maximum volume for this step, 16-bit big-endian Short)
     // Setting to 0 means no volume limit
+    buffer[6] = 0x00 // High byte
+    buffer[7] = 0x00 // Low byte
+
+    return buffer
+  }
+
+  /**
+   * Encode profile tail frame to signal end of profile
+   *
+   * Based on TCL spec_shottail from binary.tcl:
+   * Byte 0: FrameToWrite (frame count, not index)
+   * Bytes 1-2: MaxTotalVolume (16-bit, set to 0)
+   * Bytes 3-7: Padding (5 bytes of 0x00)
+   */
+  private encodeProfileTail(frameCount: number): Uint8Array<ArrayBuffer> {
+    const buffer = new Uint8Array(new ArrayBuffer(8)) as Uint8Array<ArrayBuffer>
+
+    // Byte 0: Frame count (signals this is the tail frame)
+    buffer[0] = frameCount & 0xFF
+
+    // Bytes 1-2: MaxTotalVolume (Short, set to 0)
+    buffer[1] = 0x00 // High byte
+    buffer[2] = 0x00 // Low byte
+
+    // Bytes 3-7: Padding
+    buffer[3] = 0x00
+    buffer[4] = 0x00
+    buffer[5] = 0x00
     buffer[6] = 0x00
     buffer[7] = 0x00
+
+    console.log(`[BluetoothService] Tail frame: frameCount=${frameCount}`)
 
     return buffer
   }
