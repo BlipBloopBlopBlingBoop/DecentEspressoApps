@@ -168,10 +168,12 @@ export default function HomePage() {
       // In demo mode, could simulate the adjustments
       console.log('[HomePage] Demo mode - joystick adjustments simulated')
     } else {
-      // Send adjustment commands via Bluetooth
-      // Note: This requires MMR protocol implementation
-      console.log('[HomePage] Live adjustment - would send via Bluetooth')
-      // bluetoothService.adjustFlowPressure(flowAdjust, pressureAdjust)
+      // Send adjustment commands via Bluetooth MMR protocol
+      try {
+        bluetoothService.adjustFlowPressure(flowAdjust, pressureAdjust)
+      } catch (error) {
+        console.error('[HomePage] Failed to send joystick adjustment:', error)
+      }
     }
   }
 
