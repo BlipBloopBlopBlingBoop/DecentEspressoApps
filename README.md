@@ -375,9 +375,20 @@ For issues and questions:
 
 ## 📄 Version Information
 
-**Current Version:** v1.0.0 (January 2025)
+**Current Version:** v2.0.0 (November 2025)
 
 ### Changelog
+
+#### v2.0.0 (November 2025) - Production Release
+- ✅ **FIXED:** Critical Bluetooth profile transfer protocol bugs
+- ✅ **FIXED:** Correct binary encoding for profile header, frames, and tail
+- ✅ **FIXED:** Temperature encoding (1 byte × 2, not 2 bytes × 256)
+- ✅ **FIXED:** Added missing tail frame to prevent machine crashes
+- ✅ **FIXED:** F8_1_7 duration encoding implementation
+- ✅ Automatic shot recording on machine state change
+- ✅ Comprehensive accessibility features (ARIA labels, screen readers)
+- ✅ Removed 3rd party reference files
+- ✅ Production-ready deployment
 
 #### v1.0.0 (January 2025) - Initial Release
 - ✅ Core Bluetooth connectivity with Decent machines
@@ -397,4 +408,4 @@ For issues and questions:
 
 © 2025 • This is an unofficial educational project • Decent Espresso® is a trademark of Decent Espresso Ltd.
 
-*Version 1.0.0 • Last Updated: January 2025*
+*Version 2.0.0 • Last Updated: November 2025*

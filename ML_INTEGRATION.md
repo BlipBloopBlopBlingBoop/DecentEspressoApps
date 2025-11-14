@@ -1,5 +1,8 @@
 # Machine Learning & Advanced Visualization Integration
 
+**Version:** 2.0.0
+**Last Updated:** November 2025
+
 ## Overview
 
 This document describes the advanced ML toolkit and multidimensional visualization features integrated into the Decent Espresso Control app.

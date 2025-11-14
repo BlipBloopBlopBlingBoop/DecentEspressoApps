@@ -7,10 +7,19 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#0066cc" />
-    <title>Decent Espresso Control</title>
-    <meta name="description" content="Full-featured control toolkit for Decent espresso machines" />
+    <title>Decent Espresso Control v2.0</title>
+    <meta name="description" content="Full-featured control toolkit for Decent espresso machines with Bluetooth connectivity, real-time monitoring, and profile management" />
+    <meta name="author" content="Decent Espresso Community" />
+    <meta name="keywords" content="decent espresso, bluetooth control, espresso machine, coffee, PWA" />
+
+    <!-- Accessibility -->
+    <meta name="color-scheme" content="dark" />
   </head>
   <body>
+    <!-- Skip to main content link for keyboard users -->
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-50 focus:p-4 focus:bg-decent-blue focus:text-white">
+      Skip to main content
+    </a>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
