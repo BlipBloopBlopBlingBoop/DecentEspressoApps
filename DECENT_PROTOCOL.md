@@ -211,5 +211,6 @@ function parseStateInfo(dataView: DataView) {
 
 ---
 
-*Last Updated: 2025-11-04*
-*Source: Decent Espresso Official TCL Application*
+*Last Updated: November 2025*
+*Protocol Reference: Decent Espresso Official TCL Application*
+*Implementation: v2.0.0 Production Release*

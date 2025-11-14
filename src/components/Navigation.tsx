@@ -24,8 +24,12 @@ export default function Navigation() {
   ]
 
   return (
-    <nav className="bg-gray-900 border-t border-gray-800">
-      <div className="flex justify-around">
+    <nav
+      className="bg-gray-900 border-t border-gray-800"
+      role="navigation"
+      aria-label="Main navigation"
+    >
+      <div className="flex justify-around" role="menubar">
         {navItems.map(({ to, icon: Icon, label, alwaysShow }) => {
           // Show connect always, others only when connected
           if (!alwaysShow && !isConnected && to !== '/connect') {
@@ -33,8 +37,11 @@ export default function Navigation() {
               <div
                 key={to}
                 className="flex-1 flex flex-col items-center py-2 opacity-30 cursor-not-allowed"
+                role="menuitem"
+                aria-disabled="true"
+                aria-label={`${label} (disabled, connect to machine first)`}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-5 h-5" aria-hidden="true" />
                 <span className="text-xs mt-1">{label}</span>
               </div>
             )
@@ -51,9 +58,17 @@ export default function Navigation() {
                     : 'text-gray-400 hover:text-gray-200'
                 }`
               }
+              role="menuitem"
+              aria-label={label}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-xs mt-1">{label}</span>
+              {({ isActive }) => (
+                <>
+                  <Icon className="w-5 h-5" aria-hidden="true" />
+                  <span className="text-xs mt-1" aria-current={isActive ? 'page' : undefined}>
+                    {label}
+                  </span>
+                </>
+              )}
             </NavLink>
           )
         })}

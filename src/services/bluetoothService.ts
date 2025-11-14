@@ -353,6 +353,7 @@ class BluetoothService {
       const stateInfo = parseStateInfo(value)
       const machineStore = useMachineStore.getState()
       const currentState = machineStore.state
+      const previousStateType = currentState?.state
 
       // Update state type based on the state number
       const stateType = mapStateToType(stateInfo.state) as MachineState['state']
@@ -364,6 +365,27 @@ class BluetoothService {
         substate: stateInfo.substate.toString(),
         timestamp: Date.now(),
       } as MachineState)
+
+      // Automatically start shot recording when machine enters brewing state
+      const shotStore = useShotStore.getState()
+      const recipeStore = useRecipeStore.getState()
+
+      if (stateType === 'brewing' && previousStateType !== 'brewing' && !shotStore.isRecording) {
+        console.log('[BluetoothService] Machine started brewing - automatically starting shot recording')
+
+        const activeRecipe = recipeStore.activeRecipe
+        shotStore.startShot({
+          profileName: activeRecipe?.name || 'Manual',
+          profileId: activeRecipe?.id,
+          startTime: Date.now(),
+        })
+      }
+
+      // Automatically end shot recording when machine exits brewing state
+      if (previousStateType === 'brewing' && stateType !== 'brewing' && shotStore.isRecording) {
+        console.log('[BluetoothService] Machine stopped brewing - automatically ending shot recording')
+        shotStore.endShot()
+      }
     } catch (error) {
       console.error('Error parsing STATE_INFO:', error)
     }
