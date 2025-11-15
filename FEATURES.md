@@ -245,5 +245,5 @@ The placeholder features (temperature adjustment, profile upload) are **optional
 
 ---
 
-*Last Updated: 2025-11-04*
-*Version: 1.0.0*
+*Last Updated: November 2025*
+*Version: 2.0.0*
