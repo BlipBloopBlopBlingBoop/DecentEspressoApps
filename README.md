@@ -4,6 +4,43 @@
 
 A fully-functional mobile web application for controlling Decent espresso machines via Bluetooth. This app provides comprehensive control over all machine functions, real-time data visualization, recipe management, shot history tracking, and advanced analytics.
 
+## ⚠️ Known Issues & Limitations
+
+### Browser Compatibility
+**Web Bluetooth API has LIMITED support across browsers:**
+
+✅ **Supported:**
+- Chrome/Chromium 56+ on **Windows, Linux, macOS**
+- Chrome on **Android**
+- Edge 79+ on **Windows, Linux, macOS**
+
+❌ **NOT Supported:**
+- **Safari (all platforms)** - Safari does not implement Web Bluetooth API
+- **iOS browsers (all)** - iOS does not allow Web Bluetooth, even in Chrome
+- **Firefox** - No Web Bluetooth support
+- **Mac Chrome** - May have limited/unreliable Bluetooth support depending on macOS version
+
+**If you're on iOS or Safari:** You must use the official Decent Espresso app or switch to Android/Windows.
+
+### Tea Brewing Profiles
+Tea profiles may have **duration limitations** imposed by machine firmware:
+- ⚠️ Tea profiles might run for **30 seconds maximum** regardless of configured duration
+- This appears to be a firmware limitation for flow-only (pressure=0) profiles
+- **Workaround**: Use manual mode or investigate firmware tea-specific modes
+- Currently investigating the protocol for extended tea brewing cycles
+
+### Real-Time Joystick Control
+The joystick control interface for real-time pressure/flow adjustment:
+- ⚠️ **May not function** without specific firmware support
+- Uses Memory-Mapped Register (MMR) protocol which may not be enabled on all firmware versions
+- If the joystick doesn't affect brewing, this is likely a firmware limitation
+- Designed for compatible firmware versions that support live parameter updates
+
+### Profile Transfer
+- Profile encoding follows the official Decent protocol specification
+- Enhanced debug logging has been added to diagnose transfer issues
+- Check browser console for detailed frame encoding information
+
 ## 🚀 Quick Deploy
 
 **Deploy your app in 2 minutes (FREE!):**

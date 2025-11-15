@@ -154,7 +154,7 @@ export default function LegalDisclaimer({ onAccept }: LegalDisclaimerProps) {
 
           <div className="pt-4 border-t border-gray-700">
             <p className="text-xs text-gray-500 italic">
-              Last Updated: January 2025 • This disclaimer may be updated without notice
+              Last Updated: November 2025 • This disclaimer may be updated without notice
             </p>
           </div>
         </div>

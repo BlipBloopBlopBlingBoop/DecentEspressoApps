@@ -818,10 +818,12 @@ class BluetoothService {
       // Convert weight to estimated time
       frameDuration = this.estimateTimeFromWeight(step.exit.value, step.flow)
       console.log(`[BluetoothService] Converting weight ${step.exit.value}g to time ${frameDuration}s for frame ${frameNumber}`)
+    } else {
+      console.log(`[BluetoothService] Frame ${frameNumber} exit type: ${step.exit.type}, duration: ${frameDuration}s`)
     }
     buffer[4] = this.convertToF8_1_7(frameDuration)
 
-    console.log(`[BluetoothService] Frame ${frameNumber}: ${isFlowControl ? 'FLOW' : 'PRESSURE'} mode, SetVal=${setVal.toFixed(2)} (0x${setValScaled.toString(16).padStart(2, '0')}), Temp=${step.temperature}°C, Duration=${frameDuration}s`)
+    console.log(`[BluetoothService] Frame ${frameNumber}: ${isFlowControl ? 'FLOW' : 'PRESSURE'} mode, SetVal=${setVal.toFixed(2)} (0x${setValScaled.toString(16).toUpperCase().padStart(2, '0')}), Temp=${step.temperature}°C, Duration=${frameDuration}s`)
 
     // Byte 5: TriggerVal (exit condition trigger value)
     // For now, we use time-based exits, so this is mostly unused
@@ -831,6 +833,10 @@ class BluetoothService {
     // Setting to 0 means no volume limit
     buffer[6] = 0x00 // High byte
     buffer[7] = 0x00 // Low byte
+
+    // Log the complete frame as hex for debugging
+    const hexBytes = Array.from(buffer).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ')
+    console.log(`[BluetoothService] Frame ${frameNumber} bytes: ${hexBytes}`)
 
     return buffer
   }
@@ -875,18 +881,23 @@ class BluetoothService {
    * Based on convert_float_to_F8_1_7 from binary.tcl
    */
   private convertToF8_1_7(value: number): number {
+    let encoded: number
     if (value >= 12.75) {
       // For values >= 12.75 seconds, use integer seconds with high bit set
       const intVal = Math.round(value)
       if (intVal > 127) {
         console.warn(`[BluetoothService] Frame duration ${value}s exceeds maximum 127s, capping at 127s`)
-        return 127 | 128
+        encoded = 127 | 128
+      } else {
+        encoded = intVal | 128 // Set bit 7 to indicate integer mode
       }
-      return intVal | 128 // Set bit 7 to indicate integer mode
+      console.log(`[BluetoothService] F8_1_7 encode: ${value}s -> ${intVal}s (integer mode) -> 0x${encoded.toString(16).toUpperCase().padStart(2, '0')} (${encoded})`)
     } else {
       // For values < 12.75 seconds, use 0.1 second resolution
-      return Math.round(value * 10) & 0x7F
+      encoded = Math.round(value * 10) & 0x7F
+      console.log(`[BluetoothService] F8_1_7 encode: ${value}s -> ${value * 10} tenths -> 0x${encoded.toString(16).toUpperCase().padStart(2, '0')} (${encoded})`)
     }
+    return encoded
   }
 
   /**

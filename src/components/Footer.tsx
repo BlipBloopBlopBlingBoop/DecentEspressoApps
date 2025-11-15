@@ -47,7 +47,7 @@ export default function Footer() {
 
         <div className="mt-6 pt-6 border-t border-gray-800 text-center">
           <p className="text-gray-500 text-xs">
-            v1.0.0 • January 2025 • For demo and educational purposes only • No warranty provided
+            v2.0.0 • November 2025 • For demo and educational purposes only • No warranty provided
           </p>
           <p className="text-gray-600 text-xs mt-2">
             Made with <Heart className="w-3 h-3 inline text-red-500" /> by the community
