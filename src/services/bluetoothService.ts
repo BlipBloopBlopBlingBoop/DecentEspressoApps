@@ -621,13 +621,19 @@ class BluetoothService {
 
   /**
    * Adjust flow and pressure in real-time during extraction (MMR protocol)
+   *
+   * flowAdjust: -1 to 1 (percentage adjustment, -100% to +100%)
+   * pressureAdjust: -1 to 1 (percentage adjustment, -100% to +100%)
    */
   async adjustFlowPressure(flowAdjust: number, pressureAdjust: number): Promise<void> {
     console.log(`[BluetoothService] adjustFlowPressure(flow=${flowAdjust.toFixed(2)}, pressure=${pressureAdjust.toFixed(2)})`)
-    
+
+    // Write flow adjustment to MMR register 0x82
     await this.writeMMR(0x82, flowAdjust)
+
+    // Write pressure adjustment to MMR register 0x83
     await this.writeMMR(0x83, pressureAdjust)
-    
+
     console.log('[BluetoothService] ✓ Flow/Pressure adjustments sent via MMR')
   }
 

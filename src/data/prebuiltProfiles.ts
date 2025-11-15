@@ -418,5 +418,105 @@ export const prebuiltProfiles: Recipe[] = [
     metadata: {
       dose: 18
     }
+  },
+  {
+    id: 'green-tea',
+    name: 'Green Tea',
+    description: 'Delicate green tea brewing at 75-80°C with gentle water flow. Perfect for Japanese sencha, Chinese dragon well, and other green teas. Preserves delicate flavors and prevents bitterness.',
+    author: 'DeSpresso',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    favorite: false,
+    usageCount: 0,
+    targetWeight: 200,
+    steps: [
+      {
+        name: 'Gentle Infusion',
+        temperature: 78,
+        pressure: 0,  // No pressure - flow mode only
+        flow: 3.5,    // Gentle flow for tea
+        transition: 'smooth',
+        exit: { type: 'time', value: 60 }  // 60 seconds for ~200ml
+      }
+    ],
+    metadata: {
+      coffee: 'Green tea leaves',
+      notes: 'Use 2-3g tea per 200ml water. Water temp: 75-80°C'
+    }
+  },
+  {
+    id: 'black-tea',
+    name: 'Black Tea',
+    description: 'Full-bodied black tea brewing at 90°C with moderate flow. Ideal for English breakfast, Earl Grey, Assam, and Ceylon teas. Brings out rich, robust flavors.',
+    author: 'DeSpresso',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    favorite: false,
+    usageCount: 0,
+    targetWeight: 200,
+    steps: [
+      {
+        name: 'Full Infusion',
+        temperature: 90,
+        pressure: 0,  // No pressure - flow mode only
+        flow: 3.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 60 }
+      }
+    ],
+    metadata: {
+      coffee: 'Black tea leaves',
+      notes: 'Use 2-3g tea per 200ml water. Water temp: 85-95°C'
+    }
+  },
+  {
+    id: 'white-tea',
+    name: 'White Tea',
+    description: 'Ultra-delicate white tea brewing at 70-75°C with very gentle flow. For silver needle, white peony, and premium white teas. Preserves subtle, sweet notes.',
+    author: 'DeSpresso',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    favorite: false,
+    usageCount: 0,
+    targetWeight: 200,
+    steps: [
+      {
+        name: 'Delicate Infusion',
+        temperature: 73,
+        pressure: 0,  // No pressure - flow mode only
+        flow: 3.0,    // Very gentle for delicate tea
+        transition: 'smooth',
+        exit: { type: 'time', value: 75 }  // Longer steep for white tea
+      }
+    ],
+    metadata: {
+      coffee: 'White tea leaves',
+      notes: 'Use 3-4g tea per 200ml water. Water temp: 70-75°C'
+    }
+  },
+  {
+    id: 'oolong-tea',
+    name: 'Oolong Tea',
+    description: 'Semi-oxidized oolong tea brewing at 85°C with balanced flow. Perfect for Ti Kuan Yin, Da Hong Pao, and other oolongs. Brings out complex floral and fruity notes.',
+    author: 'DeSpresso',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    favorite: false,
+    usageCount: 0,
+    targetWeight: 200,
+    steps: [
+      {
+        name: 'Balanced Infusion',
+        temperature: 85,
+        pressure: 0,  // No pressure - flow mode only
+        flow: 3.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 65 }
+      }
+    ],
+    metadata: {
+      coffee: 'Oolong tea leaves',
+      notes: 'Use 3-4g tea per 200ml water. Water temp: 80-90°C'
+    }
   }
 ]
