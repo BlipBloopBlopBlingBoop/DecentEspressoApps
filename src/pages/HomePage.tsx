@@ -317,8 +317,8 @@ export default function HomePage() {
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
                   labelStyle={{ color: '#9CA3AF' }}
-                  formatter={(value: number) => value.toFixed(2)}
-                  labelFormatter={(value) => `${value.toFixed(1)}s`}
+                  formatter={(value: number | undefined) => value !== undefined ? value.toFixed(2) : ''}
+                  labelFormatter={(value) => typeof value === 'number' ? `${value.toFixed(1)}s` : ''}
                 />
                 <Legend />
 

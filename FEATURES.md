@@ -150,11 +150,13 @@
   - Note: This is for advanced users - most use machine controls
 
 ### Profile Uploading
-- ⚠️ Profile upload to machine (needs FrameWrite protocol)
+- ✅ Profile upload to machine
   - Profile creation works
   - Local storage works
-  - Upload to machine via HeaderWrite (A00F) and FrameWrite (A010) not implemented
-  - Profiles stored locally can be manually selected
+  - Upload to machine via HeaderWrite (A00F) and FrameWrite (A010) implemented
+  - Active recipe automatically uploaded when starting espresso
+  - Supports pressure mode, flow mode, and temperature targeting (TMixTemp)
+  - Exit conditions: time, pressure, flow, weight (converted to time)
 
 ### Water Level
 - ⚠️ Water level display (needs WaterLevels characteristic)
@@ -205,7 +207,7 @@ The placeholder features (temperature adjustment, profile upload) are **optional
 
 ### Advanced Protocol
 - [ ] MMR write implementation for temperature
-- [ ] Profile upload via FrameWrite
+- [x] Profile upload via FrameWrite
 - [ ] Active water level monitoring
 - [ ] Firmware version display
 - [ ] Calibration data display/edit
