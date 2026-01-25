@@ -803,9 +803,11 @@ class BluetoothService {
     // This ensures consistent temperature control across all profile types
     flag |= 0x10 // TMixTemp - Target mixer temperature
 
-    // Add Interpolate flag if smooth transition
-    if (step.transition === 'smooth') {
-      flag |= 0x20 // Interpolate
+    // Add Interpolate flag if smooth transition - BUT NOT for flow-controlled profiles
+    // For flow control, we want constant flow from the start, not gradual ramping
+    // Interpolate would cause flow to ramp from 0 to target, which is wrong for tea/water profiles
+    if (step.transition === 'smooth' && !isFlowControl) {
+      flag |= 0x20 // Interpolate - only for pressure profiles
     }
 
     // Always set IgnoreLimit for now (no max pressure/flow constraints)
