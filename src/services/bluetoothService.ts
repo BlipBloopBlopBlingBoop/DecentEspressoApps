@@ -783,16 +783,25 @@ class BluetoothService {
     buffer[0] = frameNumber
 
     // Byte 1: Frame flag
-    // Determine if this is flow control (CtrlF) or pressure control
-    // The Decent machine uses EITHER pressure OR flow mode per step, not both
-    // We prefer pressure mode unless pressure is 0 and flow is set
+    // Flag bits (from Decent protocol spec):
+    // - CtrlF (0x01): Flow priority mode (vs pressure mode)
+    // - DoCompare (0x02): Enable early frame exit based on comparison
+    // - DC_GT (0x04): Compare greater-than (vs less-than)
+    // - DC_CompF (0x08): Compare flow (vs pressure)
+    // - TMixTemp (0x10): Target mixer/boiler temp (vs basket temp)
+    // - Interpolate (0x20): Ramp to target value (vs hard jump)
+    // - IgnoreLimit (0x40): Bypass min pressure / max flow constraints
+
     const isFlowControl = step.pressure === 0 && step.flow > 0
     let flag = 0x00
 
     if (isFlowControl) {
       flag |= 0x01 // CtrlF - Flow priority mode
     }
-    // Otherwise, it's pressure mode (CtrlP = 0, default)
+
+    // TMixTemp (0x10): Always set to target mixer/boiler temperature
+    // This ensures consistent temperature control across all profile types
+    flag |= 0x10 // TMixTemp - Target mixer temperature
 
     // Add Interpolate flag if smooth transition
     if (step.transition === 'smooth') {
@@ -801,6 +810,21 @@ class BluetoothService {
 
     // Always set IgnoreLimit for now (no max pressure/flow constraints)
     flag |= 0x40 // IgnoreLimit
+
+    // Set up exit condition comparison flags for non-time exits
+    let triggerVal = 0
+    if (step.exit.type === 'pressure') {
+      flag |= 0x02 // DoCompare - Enable comparison exit
+      flag |= 0x04 // DC_GT - Exit when pressure > threshold
+      // DC_CompF not set (0x08) = compare pressure
+      triggerVal = Math.round(step.exit.value * 16) & 0xFF
+    } else if (step.exit.type === 'flow') {
+      flag |= 0x02 // DoCompare - Enable comparison exit
+      flag |= 0x04 // DC_GT - Exit when flow > threshold
+      flag |= 0x08 // DC_CompF - Compare flow
+      triggerVal = Math.round(step.exit.value * 16) & 0xFF
+    }
+    // For 'time' and 'weight' exits, we use FrameLen only (no comparison)
 
     buffer[1] = flag
 
@@ -818,16 +842,27 @@ class BluetoothService {
       // Convert weight to estimated time
       frameDuration = this.estimateTimeFromWeight(step.exit.value, step.flow)
       console.log(`[BluetoothService] Converting weight ${step.exit.value}g to time ${frameDuration}s for frame ${frameNumber}`)
+    } else if (step.exit.type === 'pressure' || step.exit.type === 'flow') {
+      // For pressure/flow exits, set a reasonable max duration as fallback
+      frameDuration = 60 // Max 60 seconds before timeout
+      console.log(`[BluetoothService] Frame ${frameNumber} exit type: ${step.exit.type}, threshold: ${step.exit.value}, max duration: ${frameDuration}s`)
     } else {
       console.log(`[BluetoothService] Frame ${frameNumber} exit type: ${step.exit.type}, duration: ${frameDuration}s`)
     }
     buffer[4] = this.convertToF8_1_7(frameDuration)
 
-    console.log(`[BluetoothService] Frame ${frameNumber}: ${isFlowControl ? 'FLOW' : 'PRESSURE'} mode, SetVal=${setVal.toFixed(2)} (0x${setValScaled.toString(16).toUpperCase().padStart(2, '0')}), Temp=${step.temperature}°C, Duration=${frameDuration}s`)
+    const flagBits = []
+    if (flag & 0x01) flagBits.push('CtrlF')
+    if (flag & 0x02) flagBits.push('DoCompare')
+    if (flag & 0x04) flagBits.push('DC_GT')
+    if (flag & 0x08) flagBits.push('DC_CompF')
+    if (flag & 0x10) flagBits.push('TMixTemp')
+    if (flag & 0x20) flagBits.push('Interpolate')
+    if (flag & 0x40) flagBits.push('IgnoreLimit')
+    console.log(`[BluetoothService] Frame ${frameNumber}: ${isFlowControl ? 'FLOW' : 'PRESSURE'} mode, SetVal=${setVal.toFixed(2)} (0x${setValScaled.toString(16).toUpperCase().padStart(2, '0')}), Temp=${step.temperature}°C, Flags=[${flagBits.join(',')}]`)
 
-    // Byte 5: TriggerVal (exit condition trigger value)
-    // For now, we use time-based exits, so this is mostly unused
-    buffer[5] = 0x00
+    // Byte 5: TriggerVal (exit condition trigger value, scaled * 16)
+    buffer[5] = triggerVal
 
     // Bytes 6-7: MaxVol (maximum volume for this step, 16-bit big-endian Short)
     // Setting to 0 means no volume limit
