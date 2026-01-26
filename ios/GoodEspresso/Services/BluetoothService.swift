@@ -320,6 +320,7 @@ class BluetoothService: NSObject, ObservableObject {
 
     private func parseShotSample(_ data: Data) -> (pressure: Double, flow: Double, mixTemp: Double, headTemp: Double, steamTemp: Double) {
         guard data.count >= 19 else {
+            print("[BluetoothService] Shot sample too short: \(data.count) bytes")
             return (0, 0, 0, 0, 0)
         }
 
@@ -332,6 +333,19 @@ class BluetoothService: NSObject, ObservableObject {
         let headTemp = Double(headTempRaw) / 256.0
 
         let steamTemp = Double(data[18])
+
+        // Validate readings - if values are way out of range, this isn't a Decent machine
+        // Valid ranges: temp 0-150°C, pressure 0-15 bar, flow 0-10 ml/s
+        let isValidData = mixTemp >= 0 && mixTemp <= 150 &&
+                          headTemp >= 0 && headTemp <= 150 &&
+                          pressure >= 0 && pressure <= 15 &&
+                          flow >= 0 && flow <= 10
+
+        if !isValidData {
+            print("[BluetoothService] ⚠️ Invalid data detected - this may not be a Decent machine")
+            print("[BluetoothService] Raw values: temp=\(mixTemp), head=\(headTemp), pressure=\(pressure), flow=\(flow)")
+            return (0, 0, 0, 0, 0)  // Return zeros for invalid data
+        }
 
         return (pressure, flow, mixTemp, headTemp, steamTemp)
     }
