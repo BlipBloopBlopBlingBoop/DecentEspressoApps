@@ -38,26 +38,31 @@ class BluetoothService: NSObject, ObservableObject {
     /// Start scanning for Decent espresso machines
     func startScanning() {
         guard centralManager.state == .poweredOn else {
-            machineStore?.setConnectionError("Bluetooth is not available")
+            machineStore?.setConnectionError("Bluetooth is not available. Make sure Bluetooth is turned on in Settings.")
+            print("[BluetoothService] Cannot scan - Bluetooth state: \(centralManager.state.rawValue)")
             return
         }
 
         discoveredDevices.removeAll()
         isScanning = true
-        centralManager.scanForPeripherals(
-            withServices: [DecentUUIDs.serviceUUID],
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
-        )
+        print("[BluetoothService] Starting scan for Decent machines...")
 
-        // Also scan without service filter to catch devices that don't advertise the service
+        // Scan without service filter to find all nearby BLE devices
+        // Then filter by name prefix "DE1" in the delegate
+        // This is more reliable as some machines may not advertise the service UUID
         centralManager.scanForPeripherals(
             withServices: nil,
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+            options: [
+                CBCentralManagerScanOptionAllowDuplicatesKey: false
+            ]
         )
 
-        // Stop scanning after 10 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            self?.stopScanning()
+        // Stop scanning after 15 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            if self?.isScanning == true {
+                self?.stopScanning()
+                print("[BluetoothService] Scan timeout - stopped")
+            }
         }
     }
 
@@ -359,15 +364,22 @@ extension BluetoothService: CBCentralManagerDelegate {
         Task { @MainActor in
             switch central.state {
             case .poweredOn:
-                print("[BluetoothService] Bluetooth powered on")
+                print("[BluetoothService] Bluetooth powered on and ready")
             case .poweredOff:
-                machineStore?.setConnectionError("Bluetooth is turned off")
+                print("[BluetoothService] Bluetooth is turned off")
+                machineStore?.setConnectionError("Bluetooth is turned off. Please enable Bluetooth in Settings.")
             case .unauthorized:
-                machineStore?.setConnectionError("Bluetooth permission denied")
+                print("[BluetoothService] Bluetooth permission denied")
+                machineStore?.setConnectionError("Bluetooth permission denied. Please allow Bluetooth access in Settings > Good Espresso.")
             case .unsupported:
-                machineStore?.setConnectionError("Bluetooth not supported on this device")
-            default:
-                break
+                print("[BluetoothService] Bluetooth not supported (are you on Simulator?)")
+                machineStore?.setConnectionError("Bluetooth is not supported. Note: Bluetooth does not work in the iOS Simulator - use a real device.")
+            case .resetting:
+                print("[BluetoothService] Bluetooth is resetting")
+            case .unknown:
+                print("[BluetoothService] Bluetooth state unknown")
+            @unknown default:
+                print("[BluetoothService] Unknown Bluetooth state")
             }
         }
     }
@@ -375,11 +387,18 @@ extension BluetoothService: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         Task { @MainActor in
-            // Filter for Decent machines by name
-            if let name = peripheral.name, name.hasPrefix("DE1") {
+            let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String
+
+            // Log all discovered devices for debugging
+            if let deviceName = name {
+                print("[BluetoothService] Found device: \(deviceName) (RSSI: \(RSSI))")
+            }
+
+            // Filter for Decent machines by name prefix
+            if let deviceName = name, deviceName.hasPrefix("DE1") {
                 if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
                     discoveredDevices.append(peripheral)
-                    print("[BluetoothService] Discovered: \(name)")
+                    print("[BluetoothService] ✓ Discovered Decent machine: \(deviceName)")
                 }
             }
         }
