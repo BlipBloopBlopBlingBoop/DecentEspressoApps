@@ -177,9 +177,9 @@ struct ProfileVisualization: View {
 
             // Legend
             HStack(spacing: 16) {
-                LegendItem(color: .blue, text: "Pressure")
-                LegendItem(color: .cyan, text: "Flow")
-                LegendItem(color: .gray, text: "Steep")
+                ProfileLegendItem(color: .blue, text: "Pressure")
+                ProfileLegendItem(color: .cyan, text: "Flow")
+                ProfileLegendItem(color: .gray, text: "Steep")
             }
             .font(.caption)
         }
@@ -210,7 +210,7 @@ struct ProfileVisualization: View {
     }
 }
 
-struct LegendItem: View {
+struct ProfileLegendItem: View {
     let color: Color
     let text: String
 
