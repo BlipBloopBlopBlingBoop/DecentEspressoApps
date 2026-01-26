@@ -29,10 +29,8 @@ struct HomeView: View {
                         // Active Profile
                         ActiveProfileCard()
 
-                        // Real-time Chart (if brewing)
-                        if machineStore.machineState.state == .brewing {
-                            LiveShotCard()
-                        }
+                        // Shot Chart - always visible (live when brewing, last shot otherwise)
+                        ShotChartCard()
                     } else {
                         // Not Connected - Show instructions
                         NotConnectedCard()
@@ -388,19 +386,41 @@ struct ActiveProfileCard: View {
     }
 }
 
-// MARK: - Live Shot Card
-struct LiveShotCard: View {
+// MARK: - Shot Chart Card (Live or Last Shot)
+struct ShotChartCard: View {
     @EnvironmentObject var machineStore: MachineStore
+
+    var isLive: Bool {
+        machineStore.machineState.state == .brewing || machineStore.isRecording
+    }
+
+    var dataPoints: [ShotDataPoint] {
+        if let activeShot = machineStore.activeShot, !activeShot.dataPoints.isEmpty {
+            return activeShot.dataPoints
+        } else if let lastShot = machineStore.shotHistory.first, !lastShot.dataPoints.isEmpty {
+            return lastShot.dataPoints
+        }
+        return []
+    }
+
+    var chartTitle: String {
+        if isLive {
+            return "Live Extraction"
+        } else if machineStore.shotHistory.first != nil {
+            return "Last Shot"
+        }
+        return "Extraction Chart"
+    }
 
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Live Extraction")
+                Text(chartTitle)
                     .font(.headline)
 
                 Spacer()
 
-                if machineStore.isRecording {
+                if isLive && machineStore.isRecording {
                     Circle()
                         .fill(.red)
                         .frame(width: 8, height: 8)
@@ -410,9 +430,22 @@ struct LiveShotCard: View {
                 }
             }
 
-            if let shot = machineStore.activeShot {
-                ShotChartView(dataPoints: shot.dataPoints, isLive: true)
-                    .frame(height: 150)
+            if !dataPoints.isEmpty {
+                ShotChartView(dataPoints: dataPoints, isLive: isLive)
+                    .frame(height: 180)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No shot data yet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Start an extraction to see the chart")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(height: 180)
             }
         }
         .padding()

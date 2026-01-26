@@ -324,32 +324,26 @@ class BluetoothService: NSObject, ObservableObject {
             return (0, 0, 0, 0, 0)
         }
 
-        // Parse per Decent protocol (big-endian)
+        // Parse per Decent protocol (big-endian, all uint16)
+        // Offset 0-1: SampleTime
+        // Offset 2-3: GroupPressure (/4096 = bar)
+        // Offset 4-5: GroupFlow (/4096 = ml/s)
+        // Offset 6-7: MixTemp (/256 = °C)
+        // Offset 8-9: HeadTemp (/256 = °C) - NOTE: 2 bytes, not 3!
+        // Offset 10-11: SetMixTemp
+        // Offset 12-13: SetHeadTemp
+        // etc.
+
         let pressureRaw = UInt16(data[2]) << 8 | UInt16(data[3])
         let flowRaw = UInt16(data[4]) << 8 | UInt16(data[5])
         let mixTempRaw = UInt16(data[6]) << 8 | UInt16(data[7])
-        let headTempRaw = (UInt32(data[8]) << 16) | (UInt32(data[9]) << 8) | UInt32(data[10])
+        let headTempRaw = UInt16(data[8]) << 8 | UInt16(data[9])  // Fixed: 2 bytes, not 3
 
         let pressure = Double(pressureRaw) / 4096.0
         let flow = Double(flowRaw) / 4096.0
         let mixTemp = Double(mixTempRaw) / 256.0
         let headTemp = Double(headTempRaw) / 256.0
         let steamTemp = Double(data[18])
-
-        // Debug output
-        print("[BluetoothService] Parsed: P=\(String(format: "%.2f", pressure)) bar, F=\(String(format: "%.2f", flow)) ml/s, MixT=\(String(format: "%.1f", mixTemp))°C, HeadT=\(String(format: "%.1f", headTemp))°C")
-        print("[BluetoothService] Raw values: pressureRaw=\(pressureRaw), flowRaw=\(flowRaw), mixTempRaw=\(mixTempRaw), headTempRaw=\(headTempRaw)")
-
-        // Validate readings - if values are way out of range, check if data format is different
-        let isValidData = mixTemp >= 0 && mixTemp <= 150 &&
-                          headTemp >= 0 && headTemp <= 200 &&
-                          pressure >= 0 && pressure <= 15 &&
-                          flow >= 0 && flow <= 15
-
-        if !isValidData {
-            print("[BluetoothService] ⚠️ Values out of expected range - data format may be different")
-            // Still return the values for debugging, but they may be wrong
-        }
 
         return (pressure, flow, mixTemp, headTemp, steamTemp)
     }
@@ -407,29 +401,27 @@ extension BluetoothService: CBCentralManagerDelegate {
         Task { @MainActor in
             let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String
 
-            // Log all discovered devices for debugging
-            if let deviceName = name {
-                print("[BluetoothService] Found device: \(deviceName) (RSSI: \(RSSI))")
-            }
-
             // Check advertised services for Decent's service UUID
             let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
             let hasDecentService = advertisedServices.contains(DecentUUIDs.serviceUUID)
 
-            if hasDecentService {
-                print("[BluetoothService] ✓ Device has Decent service UUID: \(name ?? "Unknown")")
-            }
+            // Only show Decent-adjacent devices:
+            // - Name starts with "DE1" (standard Decent naming)
+            // - Name contains "decent"
+            // - Name is "nRF5x" (Decent uses Nordic chips, sometimes advertises this way)
+            // - Device advertises Decent service UUID
+            guard let deviceName = name else { return }
 
-            // Add ALL devices with names so user can identify their Decent machine
-            // The machine might have a custom name or different prefix
-            if let deviceName = name, !deviceName.isEmpty {
+            let isDecentDevice = deviceName.hasPrefix("DE1") ||
+                                 deviceName.lowercased().contains("decent") ||
+                                 deviceName == "nRF5x" ||
+                                 hasDecentService
+
+            if isDecentDevice {
+                print("[BluetoothService] ✓ Found Decent machine: \(deviceName) (RSSI: \(RSSI))")
+
                 if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
                     discoveredDevices.append(peripheral)
-
-                    // Highlight likely Decent machines
-                    if deviceName.hasPrefix("DE1") || deviceName.lowercased().contains("decent") || hasDecentService {
-                        print("[BluetoothService] ✓ Likely Decent machine: \(deviceName)")
-                    }
                 }
             }
         }
