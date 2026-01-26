@@ -486,7 +486,10 @@ extension BluetoothService: CBPeripheralDelegate {
                 }
             }
 
-            // Connection complete
+            // Connection complete - set initial state to idle (not disconnected)
+            var initialState = machineStore?.machineState ?? MachineState()
+            initialState.state = .idle  // Fix: Set to idle immediately on connection
+            machineStore?.updateMachineState(initialState)
             machineStore?.setConnected(true, deviceName: peripheral.name)
             print("[BluetoothService] Setup complete - \(self.characteristics.count) characteristics found")
         }

@@ -28,13 +28,17 @@ struct ControlView: View {
                         // Active Profile Section
                         ActiveProfileSection(showingProfileSheet: $showingProfileSheet)
 
-                        // Live Extraction Chart
-                        if machineStore.machineState.state == .brewing {
-                            LiveExtractionSection()
-                        }
+                        // Extraction Chart (always visible)
+                        ExtractionChartSection()
+
+                        // Advanced Controls
+                        AdvancedControlsSection()
 
                         // Temperature Gauge
                         TemperatureGaugeSection()
+
+                        // Machine Settings
+                        MachineSettingsSection()
                     }
                 }
                 .padding()
@@ -455,6 +459,259 @@ struct TemperatureItem: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Extraction Chart Section (Always Visible)
+struct ExtractionChartSection: View {
+    @EnvironmentObject var machineStore: MachineStore
+
+    var dataPoints: [ShotDataPoint] {
+        if let activeShot = machineStore.activeShot, !activeShot.dataPoints.isEmpty {
+            return activeShot.dataPoints
+        } else if let lastShot = machineStore.shotHistory.first {
+            return lastShot.dataPoints
+        }
+        return []
+    }
+
+    var isLive: Bool {
+        machineStore.machineState.state == .brewing || machineStore.isRecording
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(isLive ? "Live Extraction" : "Last Shot")
+                    .font(.headline)
+
+                Spacer()
+
+                if isLive {
+                    if let shot = machineStore.activeShot {
+                        let elapsed = Date().timeIntervalSince(shot.startTime)
+                        Text(String(format: "%.1fs", elapsed))
+                            .font(.headline)
+                            .monospacedDigit()
+                            .foregroundStyle(.orange)
+                    }
+
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 8, height: 8)
+                }
+            }
+
+            if !dataPoints.isEmpty {
+                ShotChartView(dataPoints: dataPoints, isLive: isLive)
+                    .frame(height: 200)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text("No extraction data yet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(height: 200)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Advanced Controls Section
+struct AdvancedControlsSection: View {
+    @EnvironmentObject var machineStore: MachineStore
+    @EnvironmentObject var bluetoothService: BluetoothService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Machine Controls")
+                .font(.headline)
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 12) {
+                MachineControlButton(
+                    title: "Sleep",
+                    icon: "moon.fill",
+                    color: .purple
+                ) {
+                    Task {
+                        try? await bluetoothService.sendCommand(.goToSleep)
+                    }
+                }
+
+                MachineControlButton(
+                    title: "Wake",
+                    icon: "sun.max.fill",
+                    color: .yellow
+                ) {
+                    Task {
+                        try? await bluetoothService.sendCommand(.idle)
+                    }
+                }
+
+                MachineControlButton(
+                    title: "Clean",
+                    icon: "sparkles",
+                    color: .mint
+                ) {
+                    Task {
+                        try? await bluetoothService.sendCommand(.clean)
+                    }
+                }
+
+                MachineControlButton(
+                    title: "Descale",
+                    icon: "drop.triangle.fill",
+                    color: .teal
+                ) {
+                    Task {
+                        try? await bluetoothService.sendCommand(.descale)
+                    }
+                }
+
+                MachineControlButton(
+                    title: "Skip Step",
+                    icon: "forward.fill",
+                    color: .indigo
+                ) {
+                    Task {
+                        try? await bluetoothService.sendCommand(.skipToNext)
+                    }
+                }
+
+                MachineControlButton(
+                    title: "Refill",
+                    icon: "arrow.down.to.line",
+                    color: .blue
+                ) {
+                    Task {
+                        try? await bluetoothService.sendCommand(.refill)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct MachineControlButton: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.title3)
+                Text(title)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color(.tertiarySystemGroupedBackground))
+            .foregroundStyle(color)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+// MARK: - Machine Settings Section
+struct MachineSettingsSection: View {
+    @EnvironmentObject var machineStore: MachineStore
+    @State private var targetTemp: Double = 93
+    @State private var steamTemp: Double = 140
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Settings")
+                .font(.headline)
+
+            // Target Temperature
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Target Temperature")
+                        .font(.subheadline)
+                    Spacer()
+                    Text(String(format: "%.0f\u{00B0}C", targetTemp))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
+                }
+
+                Slider(value: $targetTemp, in: 80...100, step: 1)
+                    .tint(.orange)
+            }
+
+            Divider()
+
+            // Steam Temperature
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Steam Temperature")
+                        .font(.subheadline)
+                    Spacer()
+                    Text(String(format: "%.0f\u{00B0}C", steamTemp))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.red)
+                }
+
+                Slider(value: $steamTemp, in: 120...165, step: 5)
+                    .tint(.red)
+            }
+
+            Divider()
+
+            // Info Row
+            HStack {
+                InfoItem(label: "Water Level", value: "OK", icon: "drop.fill", color: .blue)
+                Spacer()
+                InfoItem(label: "Machine", value: machineStore.deviceName ?? "DE1", icon: "cpu", color: .gray)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            targetTemp = machineStore.machineState.temperature.target
+        }
+    }
+}
+
+struct InfoItem: View {
+    let label: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+        }
     }
 }
 
