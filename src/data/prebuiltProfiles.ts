@@ -419,10 +419,18 @@ export const prebuiltProfiles: Recipe[] = [
       dose: 18
     }
   },
+  // =============================================================================
+  // TEA PROFILES - Decent-style Pulse Brewing
+  // =============================================================================
+  // Tea profiles use pulsed brewing pattern: basket fills, pressure ramps to
+  // open the valve, then fills and steeps repeatedly in pulses (not continuous flow).
+  // This mimics traditional gongfu brewing and allows better extraction control.
+  // =============================================================================
+
   {
     id: 'green-tea',
-    name: 'Green Tea',
-    description: 'Delicate green tea brewing at 75-80°C with gentle water flow. Perfect for Japanese sencha, Chinese dragon well, and other green teas. Preserves delicate flavors and prevents bitterness.',
+    name: 'Green Tea - Pulse Brew',
+    description: 'Delicate green tea with Decent-style pulse brewing at 75-80°C. Basket fills, pressure opens valve, then repeated fill/steep cycles. Perfect for sencha, dragon well, gyokuro. Preserves umami and prevents bitterness.',
     author: 'DeSpresso',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -430,24 +438,89 @@ export const prebuiltProfiles: Recipe[] = [
     usageCount: 0,
     targetWeight: 200,
     steps: [
+      // Step 1: Initial basket fill - gentle flow to wet leaves
       {
-        name: 'Gentle Infusion',
+        name: 'Initial Fill',
         temperature: 78,
-        pressure: 0,  // No pressure - flow mode only
-        flow: 3.5,    // Gentle flow for tea
+        pressure: 0,    // Flow-only mode
+        flow: 4.0,      // Quick initial fill
+        transition: 'fast',
+        exit: { type: 'time', value: 5 }  // 5 seconds to fill basket
+      },
+      // Step 2: Pressure ramp to open valve - creates backpressure
+      {
+        name: 'Valve Open',
+        temperature: 78,
+        pressure: 1.5,  // Low pressure to open valve gently
+        flow: 2.0,
         transition: 'smooth',
-        exit: { type: 'time', value: 60 }  // 60 seconds for ~200ml
+        exit: { type: 'time', value: 3 }  // Brief pressure ramp
+      },
+      // Step 3: First steep - let tea infuse (no flow)
+      {
+        name: 'Steep 1',
+        temperature: 78,
+        pressure: 0,
+        flow: 0,        // No flow - steeping
+        transition: 'fast',
+        exit: { type: 'time', value: 8 }  // 8 second steep
+      },
+      // Step 4: Pulse 1 - gentle extraction
+      {
+        name: 'Pulse 1',
+        temperature: 78,
+        pressure: 0.8,
+        flow: 3.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 5: Second steep
+      {
+        name: 'Steep 2',
+        temperature: 78,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 6: Pulse 2
+      {
+        name: 'Pulse 2',
+        temperature: 78,
+        pressure: 0.8,
+        flow: 3.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 7: Third steep
+      {
+        name: 'Steep 3',
+        temperature: 78,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 8: Final extraction - drain remaining
+      {
+        name: 'Final Drain',
+        temperature: 78,
+        pressure: 1.0,
+        flow: 3.5,
+        transition: 'smooth',
+        exit: { type: 'weight', value: 200 }  // Stop at target weight
       }
     ],
     metadata: {
       coffee: 'Green tea leaves',
-      notes: 'Use 2-3g tea per 200ml water. Water temp: 75-80°C'
+      notes: 'Use 3-5g tea per 200ml water. Pulse brewing extracts more flavor with less bitterness. Water temp: 75-80°C. Multiple infusions possible.',
+      dose: 4
     }
   },
   {
     id: 'black-tea',
-    name: 'Black Tea',
-    description: 'Full-bodied black tea brewing at 90°C with moderate flow. Ideal for English breakfast, Earl Grey, Assam, and Ceylon teas. Brings out rich, robust flavors.',
+    name: 'Black Tea - Pulse Brew',
+    description: 'Full-bodied black tea with Decent-style pulse brewing at 90°C. Higher temperature and longer steeps for robust extraction. Ideal for English breakfast, Earl Grey, Assam, Darjeeling.',
     author: 'DeSpresso',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -455,24 +528,80 @@ export const prebuiltProfiles: Recipe[] = [
     usageCount: 0,
     targetWeight: 200,
     steps: [
+      // Step 1: Initial basket fill
       {
-        name: 'Full Infusion',
+        name: 'Initial Fill',
         temperature: 90,
-        pressure: 0,  // No pressure - flow mode only
+        pressure: 0,
+        flow: 4.5,      // Slightly faster for black tea
+        transition: 'fast',
+        exit: { type: 'time', value: 5 }
+      },
+      // Step 2: Pressure ramp to open valve
+      {
+        name: 'Valve Open',
+        temperature: 90,
+        pressure: 2.0,  // Slightly higher pressure for black tea
+        flow: 2.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 3 }
+      },
+      // Step 3: First steep - longer for black tea
+      {
+        name: 'Steep 1',
+        temperature: 90,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 12 }  // Longer steep for black tea
+      },
+      // Step 4: Pulse 1 - stronger extraction
+      {
+        name: 'Pulse 1',
+        temperature: 90,
+        pressure: 1.2,
         flow: 3.5,
         transition: 'smooth',
-        exit: { type: 'time', value: 60 }
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 5: Second steep
+      {
+        name: 'Steep 2',
+        temperature: 90,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 10 }
+      },
+      // Step 6: Pulse 2
+      {
+        name: 'Pulse 2',
+        temperature: 90,
+        pressure: 1.2,
+        flow: 3.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 7: Final extraction
+      {
+        name: 'Final Drain',
+        temperature: 90,
+        pressure: 1.5,
+        flow: 4.0,
+        transition: 'smooth',
+        exit: { type: 'weight', value: 200 }
       }
     ],
     metadata: {
       coffee: 'Black tea leaves',
-      notes: 'Use 2-3g tea per 200ml water. Water temp: 85-95°C'
+      notes: 'Use 2-4g tea per 200ml water. Higher temp and longer steeps extract full body. Water temp: 85-95°C.',
+      dose: 3
     }
   },
   {
     id: 'white-tea',
-    name: 'White Tea',
-    description: 'Ultra-delicate white tea brewing at 70-75°C with very gentle flow. For silver needle, white peony, and premium white teas. Preserves subtle, sweet notes.',
+    name: 'White Tea - Pulse Brew',
+    description: 'Ultra-delicate white tea with gentle pulse brewing at 70-75°C. Very low pressure and extended steeps preserve subtle sweetness. For silver needle, white peony, shou mei.',
     author: 'DeSpresso',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -480,24 +609,89 @@ export const prebuiltProfiles: Recipe[] = [
     usageCount: 0,
     targetWeight: 200,
     steps: [
+      // Step 1: Very gentle initial fill
       {
-        name: 'Delicate Infusion',
+        name: 'Initial Fill',
         temperature: 73,
-        pressure: 0,  // No pressure - flow mode only
-        flow: 3.0,    // Very gentle for delicate tea
+        pressure: 0,
+        flow: 3.0,      // Slower fill for delicate leaves
         transition: 'smooth',
-        exit: { type: 'time', value: 75 }  // Longer steep for white tea
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 2: Minimal pressure valve open
+      {
+        name: 'Valve Open',
+        temperature: 73,
+        pressure: 1.0,  // Very gentle pressure
+        flow: 1.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 3 }
+      },
+      // Step 3: Extended first steep - white tea needs time
+      {
+        name: 'Steep 1',
+        temperature: 73,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 12 }  // Longer steep
+      },
+      // Step 4: Gentle pulse 1
+      {
+        name: 'Pulse 1',
+        temperature: 73,
+        pressure: 0.6,  // Very low pressure
+        flow: 2.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 5: Second steep
+      {
+        name: 'Steep 2',
+        temperature: 73,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 12 }
+      },
+      // Step 6: Gentle pulse 2
+      {
+        name: 'Pulse 2',
+        temperature: 73,
+        pressure: 0.6,
+        flow: 2.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 7: Third steep
+      {
+        name: 'Steep 3',
+        temperature: 73,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 10 }
+      },
+      // Step 8: Final gentle drain
+      {
+        name: 'Final Drain',
+        temperature: 73,
+        pressure: 0.8,
+        flow: 3.0,
+        transition: 'smooth',
+        exit: { type: 'weight', value: 200 }
       }
     ],
     metadata: {
       coffee: 'White tea leaves',
-      notes: 'Use 3-4g tea per 200ml water. Water temp: 70-75°C'
+      notes: 'Use 4-6g tea per 200ml water. Low temp preserves delicate flavors. Multiple infusions highly recommended. Water temp: 70-75°C.',
+      dose: 5
     }
   },
   {
     id: 'oolong-tea',
-    name: 'Oolong Tea',
-    description: 'Semi-oxidized oolong tea brewing at 85°C with balanced flow. Perfect for Ti Kuan Yin, Da Hong Pao, and other oolongs. Brings out complex floral and fruity notes.',
+    name: 'Oolong Tea - Pulse Brew',
+    description: 'Semi-oxidized oolong with traditional gongfu-style pulse brewing at 85°C. Multiple short steeps build complexity. Perfect for Ti Kuan Yin, Da Hong Pao, Dong Ding, Oriental Beauty.',
     author: 'DeSpresso',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -505,18 +699,247 @@ export const prebuiltProfiles: Recipe[] = [
     usageCount: 0,
     targetWeight: 200,
     steps: [
+      // Step 1: Initial fill
       {
-        name: 'Balanced Infusion',
+        name: 'Initial Fill',
         temperature: 85,
-        pressure: 0,  // No pressure - flow mode only
+        pressure: 0,
+        flow: 4.0,
+        transition: 'fast',
+        exit: { type: 'time', value: 5 }
+      },
+      // Step 2: Pressure ramp
+      {
+        name: 'Valve Open',
+        temperature: 85,
+        pressure: 1.8,
+        flow: 2.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 3 }
+      },
+      // Step 3: First steep - gongfu style (shorter)
+      {
+        name: 'Steep 1',
+        temperature: 85,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 4: Pulse 1
+      {
+        name: 'Pulse 1',
+        temperature: 85,
+        pressure: 1.0,
+        flow: 3.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 5: Second steep - slightly longer
+      {
+        name: 'Steep 2',
+        temperature: 85,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 10 }
+      },
+      // Step 6: Pulse 2
+      {
+        name: 'Pulse 2',
+        temperature: 85,
+        pressure: 1.0,
+        flow: 3.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 7: Third steep
+      {
+        name: 'Steep 3',
+        temperature: 85,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 8: Final extraction
+      {
+        name: 'Final Drain',
+        temperature: 85,
+        pressure: 1.2,
         flow: 3.5,
         transition: 'smooth',
-        exit: { type: 'time', value: 65 }
+        exit: { type: 'weight', value: 200 }
       }
     ],
     metadata: {
       coffee: 'Oolong tea leaves',
-      notes: 'Use 3-4g tea per 200ml water. Water temp: 80-90°C'
+      notes: 'Use 5-7g tea per 200ml water. Gongfu-style pulses reveal layers of flavor. Excellent for multiple infusions. Water temp: 80-90°C.',
+      dose: 6
+    }
+  },
+  // Additional tea profile: Pu-erh (commonly requested)
+  {
+    id: 'puerh-tea',
+    name: 'Pu-erh Tea - Pulse Brew',
+    description: 'Aged pu-erh tea with vigorous pulse brewing at 95°C. High temperature and strong pulses extract deep, earthy flavors. For sheng (raw) and shou (ripe) pu-erh.',
+    author: 'DeSpresso',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    favorite: false,
+    usageCount: 0,
+    targetWeight: 200,
+    steps: [
+      // Step 1: Rinse/wake the leaves (pu-erh tradition)
+      {
+        name: 'Rinse',
+        temperature: 95,
+        pressure: 0,
+        flow: 5.0,      // Fast rinse
+        transition: 'fast',
+        exit: { type: 'time', value: 3 }
+      },
+      // Step 2: Pressure ramp
+      {
+        name: 'Valve Open',
+        temperature: 95,
+        pressure: 2.5,  // Higher pressure for aged tea
+        flow: 3.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 3 }
+      },
+      // Step 3: First steep - short for pu-erh
+      {
+        name: 'Steep 1',
+        temperature: 95,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 4: Pulse 1 - strong extraction
+      {
+        name: 'Pulse 1',
+        temperature: 95,
+        pressure: 1.5,
+        flow: 4.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 7 }
+      },
+      // Step 5: Second steep
+      {
+        name: 'Steep 2',
+        temperature: 95,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 6: Pulse 2
+      {
+        name: 'Pulse 2',
+        temperature: 95,
+        pressure: 1.5,
+        flow: 4.0,
+        transition: 'smooth',
+        exit: { type: 'time', value: 7 }
+      },
+      // Step 7: Third steep
+      {
+        name: 'Steep 3',
+        temperature: 95,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 6 }
+      },
+      // Step 8: Final extraction
+      {
+        name: 'Final Drain',
+        temperature: 95,
+        pressure: 2.0,
+        flow: 4.5,
+        transition: 'smooth',
+        exit: { type: 'weight', value: 200 }
+      }
+    ],
+    metadata: {
+      coffee: 'Pu-erh tea (sheng or shou)',
+      notes: 'Use 5-8g tea per 200ml water. First rinse wakes the leaves. High temp extracts aged flavors. Can steep 10+ times. Water temp: 95-100°C.',
+      dose: 7
+    }
+  },
+  // Herbal/Tisane profile
+  {
+    id: 'herbal-tisane',
+    name: 'Herbal Tisane - Pulse Brew',
+    description: 'Herbal infusions with extended pulse brewing at 95°C. Longer steeps extract full herbal benefits. For chamomile, peppermint, rooibos, hibiscus, and herbal blends.',
+    author: 'DeSpresso',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    favorite: false,
+    usageCount: 0,
+    targetWeight: 200,
+    steps: [
+      // Step 1: Initial fill
+      {
+        name: 'Initial Fill',
+        temperature: 95,
+        pressure: 0,
+        flow: 4.5,
+        transition: 'fast',
+        exit: { type: 'time', value: 5 }
+      },
+      // Step 2: Pressure ramp
+      {
+        name: 'Valve Open',
+        temperature: 95,
+        pressure: 2.0,
+        flow: 2.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 3 }
+      },
+      // Step 3: Extended first steep - herbals need time
+      {
+        name: 'Steep 1',
+        temperature: 95,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 15 }  // Long steep for herbals
+      },
+      // Step 4: Pulse 1
+      {
+        name: 'Pulse 1',
+        temperature: 95,
+        pressure: 1.0,
+        flow: 3.5,
+        transition: 'smooth',
+        exit: { type: 'time', value: 8 }
+      },
+      // Step 5: Second steep
+      {
+        name: 'Steep 2',
+        temperature: 95,
+        pressure: 0,
+        flow: 0,
+        transition: 'fast',
+        exit: { type: 'time', value: 12 }
+      },
+      // Step 6: Final extraction
+      {
+        name: 'Final Drain',
+        temperature: 95,
+        pressure: 1.5,
+        flow: 4.0,
+        transition: 'smooth',
+        exit: { type: 'weight', value: 200 }
+      }
+    ],
+    metadata: {
+      coffee: 'Herbal blend / Tisane',
+      notes: 'Use 2-4g dried herbs per 200ml water. Extended steeping extracts full flavor and benefits. Caffeine-free. Water temp: 95-100°C.',
+      dose: 3
     }
   }
 ]
