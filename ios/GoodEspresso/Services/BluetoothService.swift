@@ -394,11 +394,24 @@ extension BluetoothService: CBCentralManagerDelegate {
                 print("[BluetoothService] Found device: \(deviceName) (RSSI: \(RSSI))")
             }
 
-            // Filter for Decent machines by name prefix
-            if let deviceName = name, deviceName.hasPrefix("DE1") {
+            // Check advertised services for Decent's service UUID
+            let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+            let hasDecentService = advertisedServices.contains(DecentUUIDs.serviceUUID)
+
+            if hasDecentService {
+                print("[BluetoothService] ✓ Device has Decent service UUID: \(name ?? "Unknown")")
+            }
+
+            // Add ALL devices with names so user can identify their Decent machine
+            // The machine might have a custom name or different prefix
+            if let deviceName = name, !deviceName.isEmpty {
                 if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
                     discoveredDevices.append(peripheral)
-                    print("[BluetoothService] ✓ Discovered Decent machine: \(deviceName)")
+
+                    // Highlight likely Decent machines
+                    if deviceName.hasPrefix("DE1") || deviceName.lowercased().contains("decent") || hasDecentService {
+                        print("[BluetoothService] ✓ Likely Decent machine: \(deviceName)")
+                    }
                 }
             }
         }
