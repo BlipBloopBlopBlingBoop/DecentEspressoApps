@@ -257,18 +257,18 @@ struct TooltipView: View {
 }
 
 #Preview {
-    // Sample data for preview
-    let sampleData: [ShotDataPoint] = (0..<60).map { i in
-        ShotDataPoint(
-            timestamp: Double(i) * 500,
-            temperature: 93 + Double.random(in: -1...1),
-            pressure: i < 10 ? Double(i) * 0.9 : 9 + Double.random(in: -0.5...0.5),
-            flow: i < 5 ? 0 : 2.5 + Double.random(in: -0.3...0.3),
-            weight: Double(i) * 0.6
-        )
-    }
-
-    ShotChartView(dataPoints: sampleData, isLive: false)
-        .frame(height: 200)
-        .padding()
+    ShotChartView(
+        dataPoints: [
+            ShotDataPoint(timestamp: 0, temperature: 93, pressure: 0, flow: 0, weight: 0),
+            ShotDataPoint(timestamp: 5000, temperature: 93, pressure: 3, flow: 1.5, weight: 2),
+            ShotDataPoint(timestamp: 10000, temperature: 93, pressure: 9, flow: 2.5, weight: 8),
+            ShotDataPoint(timestamp: 15000, temperature: 93, pressure: 9, flow: 2.5, weight: 14),
+            ShotDataPoint(timestamp: 20000, temperature: 93, pressure: 9, flow: 2.5, weight: 20),
+            ShotDataPoint(timestamp: 25000, temperature: 93, pressure: 9, flow: 2.5, weight: 26),
+            ShotDataPoint(timestamp: 30000, temperature: 93, pressure: 9, flow: 2.0, weight: 32)
+        ],
+        isLive: false
+    )
+    .frame(height: 200)
+    .padding()
 }
