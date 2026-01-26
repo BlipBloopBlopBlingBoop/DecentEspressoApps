@@ -324,27 +324,31 @@ class BluetoothService: NSObject, ObservableObject {
             return (0, 0, 0, 0, 0)
         }
 
-        let pressure = Double(UInt16(data[2]) << 8 | UInt16(data[3])) / 4096.0
-        let flow = Double(UInt16(data[4]) << 8 | UInt16(data[5])) / 4096.0
-        let mixTemp = Double(UInt16(data[6]) << 8 | UInt16(data[7])) / 256.0
-
-        // Head temp is 3 bytes
+        // Parse per Decent protocol (big-endian)
+        let pressureRaw = UInt16(data[2]) << 8 | UInt16(data[3])
+        let flowRaw = UInt16(data[4]) << 8 | UInt16(data[5])
+        let mixTempRaw = UInt16(data[6]) << 8 | UInt16(data[7])
         let headTempRaw = (UInt32(data[8]) << 16) | (UInt32(data[9]) << 8) | UInt32(data[10])
-        let headTemp = Double(headTempRaw) / 256.0
 
+        let pressure = Double(pressureRaw) / 4096.0
+        let flow = Double(flowRaw) / 4096.0
+        let mixTemp = Double(mixTempRaw) / 256.0
+        let headTemp = Double(headTempRaw) / 256.0
         let steamTemp = Double(data[18])
 
-        // Validate readings - if values are way out of range, this isn't a Decent machine
-        // Valid ranges: temp 0-150°C, pressure 0-15 bar, flow 0-10 ml/s
+        // Debug output
+        print("[BluetoothService] Parsed: P=\(String(format: "%.2f", pressure)) bar, F=\(String(format: "%.2f", flow)) ml/s, MixT=\(String(format: "%.1f", mixTemp))°C, HeadT=\(String(format: "%.1f", headTemp))°C")
+        print("[BluetoothService] Raw values: pressureRaw=\(pressureRaw), flowRaw=\(flowRaw), mixTempRaw=\(mixTempRaw), headTempRaw=\(headTempRaw)")
+
+        // Validate readings - if values are way out of range, check if data format is different
         let isValidData = mixTemp >= 0 && mixTemp <= 150 &&
-                          headTemp >= 0 && headTemp <= 150 &&
+                          headTemp >= 0 && headTemp <= 200 &&
                           pressure >= 0 && pressure <= 15 &&
-                          flow >= 0 && flow <= 10
+                          flow >= 0 && flow <= 15
 
         if !isValidData {
-            print("[BluetoothService] ⚠️ Invalid data detected - this may not be a Decent machine")
-            print("[BluetoothService] Raw values: temp=\(mixTemp), head=\(headTemp), pressure=\(pressure), flow=\(flow)")
-            return (0, 0, 0, 0, 0)  // Return zeros for invalid data
+            print("[BluetoothService] ⚠️ Values out of expected range - data format may be different")
+            // Still return the values for debugging, but they may be wrong
         }
 
         return (pressure, flow, mixTemp, headTemp, steamTemp)
@@ -499,6 +503,13 @@ extension BluetoothService: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         Task { @MainActor in
             guard error == nil, let data = characteristic.value else { return }
+
+            // Debug: Log which characteristic is updating and raw data
+            let hexString = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+            print("[BluetoothService] Characteristic \(characteristic.uuid.uuidString.prefix(8))... updated: \(data.count) bytes")
+            if data.count <= 20 {
+                print("[BluetoothService] Raw data: \(hexString)")
+            }
 
             if characteristic.uuid == DecentUUIDs.shotSample {
                 let sample = parseShotSample(data)
