@@ -28,7 +28,7 @@ struct WatchContentView: View {
             .onAppear {
                 connectivityService.requestStatus()
             }
-            .onChange(of: connectivityService.lastMessage) { _, newMessage in
+            .onChange(of: connectivityService.lastMessage) { newMessage in
                 machineStore.updateFromMessage(newMessage)
             }
         }
