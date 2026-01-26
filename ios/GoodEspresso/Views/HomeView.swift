@@ -11,32 +11,30 @@ struct HomeView: View {
     @EnvironmentObject var machineStore: MachineStore
     @EnvironmentObject var bluetoothService: BluetoothService
     @State private var showingConnectionSheet = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    var isCompact: Bool {
+        horizontalSizeClass == .compact
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
-                    // Connection Status Card
-                    ConnectionStatusCard(showingConnectionSheet: $showingConnectionSheet)
-
-                    if machineStore.isConnected {
-                        // Machine Status
-                        MachineStatusCard()
-
-                        // Quick Controls
-                        QuickControlsCard()
-
-                        // Active Profile
-                        ActiveProfileCard()
-
-                        // Shot Chart - always visible (live when brewing, last shot otherwise)
-                        ShotChartCard()
+                if machineStore.isConnected {
+                    if isCompact {
+                        // iPhone layout - vertical stack
+                        compactLayout
                     } else {
-                        // Not Connected - Show instructions
+                        // iPad layout - two column grid
+                        regularLayout
+                    }
+                } else {
+                    VStack(spacing: 20) {
+                        ConnectionStatusCard(showingConnectionSheet: $showingConnectionSheet)
                         NotConnectedCard()
                     }
+                    .padding()
                 }
-                .padding()
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Good Espresso")
@@ -53,6 +51,106 @@ struct HomeView: View {
             .sheet(isPresented: $showingConnectionSheet) {
                 ConnectionView()
             }
+        }
+    }
+
+    // MARK: - Compact Layout (iPhone)
+    var compactLayout: some View {
+        VStack(spacing: 20) {
+            ConnectionStatusCard(showingConnectionSheet: $showingConnectionSheet)
+            MachineStatusCard()
+            QuickControlsCard()
+            ActiveProfileCard()
+            ShotChartCard()
+        }
+        .padding()
+    }
+
+    // MARK: - Regular Layout (iPad)
+    var regularLayout: some View {
+        VStack(spacing: 20) {
+            // Top row: Connection + Status
+            HStack(alignment: .top, spacing: 20) {
+                ConnectionStatusCard(showingConnectionSheet: $showingConnectionSheet)
+                    .frame(maxWidth: .infinity)
+                MachineStatusCard()
+                    .frame(maxWidth: .infinity)
+            }
+
+            // Main content: Chart + Controls side by side
+            HStack(alignment: .top, spacing: 20) {
+                // Left column: Chart (larger)
+                VStack(spacing: 20) {
+                    ShotChartCard()
+                    ActiveProfileCard()
+                }
+                .frame(maxWidth: .infinity)
+
+                // Right column: Controls
+                VStack(spacing: 20) {
+                    QuickControlsCard()
+                    // Extra space for additional controls on iPad
+                    iPadExtendedControlsCard()
+                }
+                .frame(width: 320)
+            }
+        }
+        .padding()
+    }
+}
+
+// MARK: - iPad Extended Controls
+struct iPadExtendedControlsCard: View {
+    @EnvironmentObject var machineStore: MachineStore
+    @EnvironmentObject var bluetoothService: BluetoothService
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Machine")
+                    .font(.headline)
+                Spacer()
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 12) {
+                iPadControlButton(title: "Sleep", icon: "moon.zzz", color: .purple) {
+                    Task { try? await bluetoothService.sendCommand(.goToSleep) }
+                }
+
+                iPadControlButton(title: "Wake", icon: "sunrise", color: .orange) {
+                    Task { try? await bluetoothService.sendCommand(.idle) }
+                }
+
+                iPadControlButton(title: "Clean", icon: "sparkles", color: .blue) {
+                    Task { try? await bluetoothService.sendCommand(.clean) }
+                }
+
+                iPadControlButton(title: "Descale", icon: "drop.triangle", color: .cyan) {
+                    Task { try? await bluetoothService.sendCommand(.descale) }
+                }
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    func iPadControlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.title3)
+                Text(title)
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color(.tertiarySystemGroupedBackground))
+            .foregroundStyle(color)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 }

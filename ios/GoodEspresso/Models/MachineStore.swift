@@ -31,6 +31,7 @@ class MachineStore: ObservableObject {
     // MARK: - All Recipes
     @Published var recipes: [Recipe] = []
     @Published var favoriteRecipes: [Recipe] = []
+    @Published var customRecipes: [Recipe] = []
 
     // MARK: - Settings
     @Published var temperatureUnit: String = "celsius"  // or "fahrenheit"
@@ -44,7 +45,14 @@ class MachineStore: ObservableObject {
 
     // MARK: - Recipe Management
     func loadRecipes() {
-        recipes = ProfilesData.allProfiles
+        // Load built-in profiles
+        var allRecipes = ProfilesData.allProfiles
+
+        // Load custom profiles
+        loadCustomRecipes()
+        allRecipes.append(contentsOf: customRecipes)
+
+        recipes = allRecipes
         favoriteRecipes = recipes.filter { $0.favorite }
 
         // Set default active recipe if none selected
@@ -63,7 +71,67 @@ class MachineStore: ObservableObject {
         if let index = recipes.firstIndex(where: { $0.id == recipe.id }) {
             recipes[index].favorite.toggle()
             favoriteRecipes = recipes.filter { $0.favorite }
+
+            // If it's a custom recipe, save the change
+            if let customIndex = customRecipes.firstIndex(where: { $0.id == recipe.id }) {
+                customRecipes[customIndex].favorite.toggle()
+                saveCustomRecipes()
+            }
         }
+    }
+
+    // MARK: - Custom Profile Management
+    func loadCustomRecipes() {
+        if let data = UserDefaults.standard.data(forKey: "customRecipes"),
+           let custom = try? JSONDecoder().decode([Recipe].self, from: data) {
+            customRecipes = custom
+        }
+    }
+
+    func saveCustomRecipes() {
+        if let data = try? JSONEncoder().encode(customRecipes) {
+            UserDefaults.standard.set(data, forKey: "customRecipes")
+        }
+    }
+
+    func saveCustomProfile(_ recipe: Recipe) {
+        // Check if updating existing
+        if let index = customRecipes.firstIndex(where: { $0.id == recipe.id }) {
+            customRecipes[index] = recipe
+        } else {
+            customRecipes.append(recipe)
+        }
+
+        saveCustomRecipes()
+
+        // Reload all recipes to include the new/updated one
+        loadRecipes()
+    }
+
+    func deleteCustomProfile(_ recipe: Recipe) {
+        customRecipes.removeAll { $0.id == recipe.id }
+        saveCustomRecipes()
+
+        // If deleted recipe was active, clear it
+        if activeRecipe?.id == recipe.id {
+            activeRecipe = recipes.first
+        }
+
+        loadRecipes()
+    }
+
+    func isCustomProfile(_ recipe: Recipe) -> Bool {
+        customRecipes.contains { $0.id == recipe.id }
+    }
+
+    func duplicateProfile(_ recipe: Recipe) -> Recipe {
+        var copy = recipe
+        copy.id = "\(recipe.id)-copy-\(UUID().uuidString.prefix(8))"
+        copy.name = "\(recipe.name) (Copy)"
+        copy.createdAt = Date()
+        copy.updatedAt = Date()
+        copy.author = "Custom"
+        return copy
     }
 
     // MARK: - Shot Recording

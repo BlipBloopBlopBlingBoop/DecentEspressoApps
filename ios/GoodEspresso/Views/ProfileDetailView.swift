@@ -12,6 +12,9 @@ struct ProfileDetailView: View {
     @EnvironmentObject var bluetoothService: BluetoothService
     @Environment(\.dismiss) private var dismiss
     let recipe: Recipe
+    var onEdit: ((Recipe) -> Void)?
+
+    @State private var showingEditor = false
 
     var isActive: Bool {
         machineStore.activeRecipe?.id == recipe.id
@@ -19,6 +22,10 @@ struct ProfileDetailView: View {
 
     var isTea: Bool {
         recipe.id.contains("tea") || recipe.id.contains("herbal") || recipe.id.contains("tisane")
+    }
+
+    var isCustom: Bool {
+        machineStore.isCustomProfile(recipe)
     }
 
     var body: some View {
@@ -50,7 +57,15 @@ struct ProfileDetailView: View {
         .navigationTitle(recipe.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if isCustom {
+                    Button {
+                        showingEditor = true
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                }
+
                 Button {
                     machineStore.toggleFavorite(recipe)
                 } label: {
@@ -58,6 +73,9 @@ struct ProfileDetailView: View {
                         .foregroundStyle(recipe.favorite ? .yellow : .gray)
                 }
             }
+        }
+        .sheet(isPresented: $showingEditor) {
+            ProfileEditorView(existingRecipe: recipe)
         }
     }
 }

@@ -23,6 +23,8 @@
 		1A000001B /* ProfileDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000001C; };
 		1A000001D /* LegalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000001E; };
 		1A000001F /* MachineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000020; };
+		1A0000035 /* ProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000036; };
+		1A0000037 /* WatchConnectivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000038; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +46,8 @@
 		1A000001E /* LegalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalView.swift; sourceTree = "<group>"; };
 		1A0000020 /* MachineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachineStore.swift; sourceTree = "<group>"; };
 		1A0000022 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A0000036 /* ProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorView.swift; sourceTree = "<group>"; };
+		1A0000038 /* WatchConnectivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -109,6 +113,7 @@
 				1A000001A /* ShotChartView.swift */,
 				1A000001C /* ProfileDetailView.swift */,
 				1A000001E /* LegalView.swift */,
+				1A0000036 /* ProfileEditorView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -117,6 +122,7 @@
 			isa = PBXGroup;
 			children = (
 				1A000000A /* BluetoothService.swift */,
+				1A0000038 /* WatchConnectivityService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -213,6 +219,8 @@
 				1A000001B /* ProfileDetailView.swift in Sources */,
 				1A000001D /* LegalView.swift in Sources */,
 				1A000001F /* MachineStore.swift in Sources */,
+				1A0000035 /* ProfileEditorView.swift in Sources */,
+				1A0000037 /* WatchConnectivityService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -366,7 +374,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.goodespresso.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -402,7 +410,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.goodespresso.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

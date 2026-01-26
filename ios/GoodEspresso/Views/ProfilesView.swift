@@ -11,11 +11,14 @@ struct ProfilesView: View {
     @EnvironmentObject var machineStore: MachineStore
     @State private var searchText = ""
     @State private var selectedCategory: ProfileCategory = .all
+    @State private var showingNewProfile = false
+    @State private var editingProfile: Recipe?
 
     enum ProfileCategory: String, CaseIterable {
         case all = "All"
         case espresso = "Espresso"
         case tea = "Tea"
+        case custom = "Custom"
         case favorites = "Favorites"
     }
 
@@ -29,6 +32,8 @@ struct ProfilesView: View {
             profiles = machineStore.espressoProfiles
         case .tea:
             profiles = machineStore.teaProfiles
+        case .custom:
+            profiles = machineStore.customRecipes
         case .favorites:
             profiles = machineStore.favoriteRecipes
         }
@@ -58,13 +63,30 @@ struct ProfilesView: View {
                 // Profile List
                 List {
                     ForEach(filteredProfiles) { recipe in
-                        ProfileRow(recipe: recipe)
+                        ProfileRow(recipe: recipe) { recipeToEdit in
+                            editingProfile = recipeToEdit
+                        }
                     }
                 }
                 .listStyle(.plain)
             }
             .navigationTitle("Profiles")
             .searchable(text: $searchText, prompt: "Search profiles")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingNewProfile = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingNewProfile) {
+                ProfileEditorView(existingRecipe: nil)
+            }
+            .sheet(item: $editingProfile) { recipe in
+                ProfileEditorView(existingRecipe: recipe)
+            }
         }
     }
 }
@@ -73,6 +95,7 @@ struct ProfilesView: View {
 struct ProfileRow: View {
     @EnvironmentObject var machineStore: MachineStore
     let recipe: Recipe
+    var onEdit: ((Recipe) -> Void)?
 
     var isActive: Bool {
         machineStore.activeRecipe?.id == recipe.id
@@ -82,9 +105,13 @@ struct ProfileRow: View {
         recipe.id.contains("tea") || recipe.id.contains("herbal") || recipe.id.contains("tisane")
     }
 
+    var isCustom: Bool {
+        machineStore.isCustomProfile(recipe)
+    }
+
     var body: some View {
         NavigationLink {
-            ProfileDetailView(recipe: recipe)
+            ProfileDetailView(recipe: recipe, onEdit: onEdit)
         } label: {
             HStack(spacing: 12) {
                 // Icon
@@ -156,6 +183,61 @@ struct ProfileRow: View {
                 )
             }
             .tint(.yellow)
+
+            if isCustom {
+                Button(role: .destructive) {
+                    machineStore.deleteCustomProfile(recipe)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+
+            Button {
+                let copy = machineStore.duplicateProfile(recipe)
+                machineStore.saveCustomProfile(copy)
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
+            .tint(.blue)
+        }
+        .contextMenu {
+            Button {
+                machineStore.setActiveRecipe(recipe)
+            } label: {
+                Label("Select", systemImage: "checkmark.circle")
+            }
+
+            Button {
+                machineStore.toggleFavorite(recipe)
+            } label: {
+                Label(
+                    recipe.favorite ? "Remove from Favorites" : "Add to Favorites",
+                    systemImage: recipe.favorite ? "star.slash" : "star"
+                )
+            }
+
+            Button {
+                let copy = machineStore.duplicateProfile(recipe)
+                machineStore.saveCustomProfile(copy)
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
+
+            if isCustom {
+                Divider()
+
+                Button {
+                    onEdit?(recipe)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+
+                Button(role: .destructive) {
+                    machineStore.deleteCustomProfile(recipe)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
         }
     }
 }
