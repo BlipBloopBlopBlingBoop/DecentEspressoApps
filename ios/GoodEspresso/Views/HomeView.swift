@@ -1,0 +1,475 @@
+//
+//  HomeView.swift
+//  Good Espresso
+//
+//  Main dashboard showing machine status and quick controls
+//
+
+import SwiftUI
+
+struct HomeView: View {
+    @EnvironmentObject var machineStore: MachineStore
+    @EnvironmentObject var bluetoothService: BluetoothService
+    @State private var showingConnectionSheet = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Connection Status Card
+                    ConnectionStatusCard(showingConnectionSheet: $showingConnectionSheet)
+
+                    if machineStore.isConnected {
+                        // Machine Status
+                        MachineStatusCard()
+
+                        // Quick Controls
+                        QuickControlsCard()
+
+                        // Active Profile
+                        ActiveProfileCard()
+
+                        // Real-time Chart (if brewing)
+                        if machineStore.machineState.state == .brewing {
+                            LiveShotCard()
+                        }
+                    } else {
+                        // Not Connected - Show instructions
+                        NotConnectedCard()
+                    }
+                }
+                .padding()
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Good Espresso")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingConnectionSheet = true
+                    } label: {
+                        Image(systemName: machineStore.isConnected ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                            .foregroundStyle(machineStore.isConnected ? .green : .gray)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingConnectionSheet) {
+                ConnectionView()
+            }
+        }
+    }
+}
+
+// MARK: - Connection Status Card
+struct ConnectionStatusCard: View {
+    @EnvironmentObject var machineStore: MachineStore
+    @Binding var showingConnectionSheet: Bool
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Circle()
+                    .fill(machineStore.isConnected ? .green : .red)
+                    .frame(width: 12, height: 12)
+
+                Text(machineStore.isConnected ? "Connected" : "Disconnected")
+                    .font(.headline)
+
+                Spacer()
+
+                if let name = machineStore.deviceName {
+                    Text(name)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if !machineStore.isConnected {
+                Button {
+                    showingConnectionSheet = true
+                } label: {
+                    Label("Connect to Machine", systemImage: "link")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            }
+
+            if let error = machineStore.connectionError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Machine Status Card
+struct MachineStatusCard: View {
+    @EnvironmentObject var machineStore: MachineStore
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Machine Status")
+                    .font(.headline)
+                Spacer()
+                StatusBadge(state: machineStore.machineState.state)
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 16) {
+                StatusItem(
+                    icon: "thermometer.medium",
+                    value: machineStore.formatTemperature(machineStore.machineState.temperature.head),
+                    label: "Head Temp"
+                )
+
+                StatusItem(
+                    icon: "gauge.with.needle",
+                    value: String(format: "%.1f bar", machineStore.machineState.pressure),
+                    label: "Pressure"
+                )
+
+                StatusItem(
+                    icon: "drop.fill",
+                    value: String(format: "%.1f ml/s", machineStore.machineState.flow),
+                    label: "Flow"
+                )
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct StatusBadge: View {
+    let state: MachineStateType
+
+    var body: some View {
+        Text(state.displayName)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(backgroundColor)
+            .foregroundStyle(.white)
+            .clipShape(Capsule())
+    }
+
+    var backgroundColor: Color {
+        switch state {
+        case .idle: return .gray
+        case .sleep: return .purple
+        case .warming: return .orange
+        case .ready: return .green
+        case .brewing: return .blue
+        case .steam: return .red
+        case .flush: return .cyan
+        case .cleaning: return .yellow
+        case .error: return .red
+        case .disconnected: return .gray
+        }
+    }
+}
+
+struct StatusItem: View {
+    let icon: String
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(.orange)
+
+            Text(value)
+                .font(.headline)
+                .monospacedDigit()
+
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Quick Controls Card
+struct QuickControlsCard: View {
+    @EnvironmentObject var machineStore: MachineStore
+    @EnvironmentObject var bluetoothService: BluetoothService
+    @State private var isLoading = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Quick Controls")
+                    .font(.headline)
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                ControlButton(
+                    title: "Espresso",
+                    icon: "cup.and.saucer.fill",
+                    color: .orange,
+                    isActive: machineStore.machineState.state == .brewing
+                ) {
+                    Task {
+                        do {
+                            if machineStore.machineState.state == .brewing {
+                                try await bluetoothService.stop()
+                            } else {
+                                try await bluetoothService.startEspresso()
+                            }
+                        } catch {
+                            print("Error: \(error)")
+                        }
+                    }
+                }
+
+                ControlButton(
+                    title: "Steam",
+                    icon: "cloud.fill",
+                    color: .red,
+                    isActive: machineStore.machineState.state == .steam
+                ) {
+                    Task {
+                        do {
+                            if machineStore.machineState.state == .steam {
+                                try await bluetoothService.stop()
+                            } else {
+                                try await bluetoothService.startSteam()
+                            }
+                        } catch {
+                            print("Error: \(error)")
+                        }
+                    }
+                }
+
+                ControlButton(
+                    title: "Flush",
+                    icon: "drop.fill",
+                    color: .cyan,
+                    isActive: machineStore.machineState.state == .flush
+                ) {
+                    Task {
+                        do {
+                            if machineStore.machineState.state == .flush {
+                                try await bluetoothService.stop()
+                            } else {
+                                try await bluetoothService.startFlush()
+                            }
+                        } catch {
+                            print("Error: \(error)")
+                        }
+                    }
+                }
+
+                ControlButton(
+                    title: "Hot Water",
+                    icon: "mug.fill",
+                    color: .blue,
+                    isActive: false
+                ) {
+                    Task {
+                        do {
+                            try await bluetoothService.startHotWater()
+                        } catch {
+                            print("Error: \(error)")
+                        }
+                    }
+                }
+            }
+
+            // Stop button
+            if machineStore.machineState.state == .brewing ||
+               machineStore.machineState.state == .steam ||
+               machineStore.machineState.state == .flush {
+                Button {
+                    Task {
+                        try? await bluetoothService.stop()
+                    }
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct ControlButton: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title)
+                Text(title)
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isActive ? color : Color(.tertiarySystemGroupedBackground))
+            .foregroundStyle(isActive ? .white : color)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+// MARK: - Active Profile Card
+struct ActiveProfileCard: View {
+    @EnvironmentObject var machineStore: MachineStore
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Active Profile")
+                    .font(.headline)
+                Spacer()
+                NavigationLink {
+                    ProfilesView()
+                } label: {
+                    Text("Change")
+                        .font(.subheadline)
+                }
+            }
+
+            if let recipe = machineStore.activeRecipe {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(recipe.name)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+
+                        Text("\(recipe.steps.count) steps • Target: \(Int(recipe.targetWeight))g")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    NavigationLink {
+                        ProfileDetailView(recipe: recipe)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding()
+                .background(Color(.tertiarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Text("No profile selected")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Live Shot Card
+struct LiveShotCard: View {
+    @EnvironmentObject var machineStore: MachineStore
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Live Extraction")
+                    .font(.headline)
+
+                Spacer()
+
+                if machineStore.isRecording {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 8, height: 8)
+                    Text("Recording")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            if let shot = machineStore.activeShot {
+                ShotChartView(dataPoints: shot.dataPoints, isLive: true)
+                    .frame(height: 150)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Not Connected Card
+struct NotConnectedCard: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "cup.and.saucer")
+                .font(.system(size: 60))
+                .foregroundStyle(.orange)
+
+            Text("Welcome to Good Espresso")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("Connect to your Decent espresso machine to start brewing amazing coffee and tea.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            VStack(alignment: .leading, spacing: 8) {
+                FeatureRow(icon: "waveform.path.ecg", text: "Real-time extraction monitoring")
+                FeatureRow(icon: "list.bullet.rectangle", text: "Professional brewing profiles")
+                FeatureRow(icon: "leaf.fill", text: "Pulse-brew tea profiles")
+                FeatureRow(icon: "chart.line.uptrend.xyaxis", text: "Shot history and analytics")
+            }
+            .padding(.top)
+        }
+        .padding(24)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct FeatureRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(.orange)
+                .frame(width: 24)
+
+            Text(text)
+                .font(.subheadline)
+        }
+    }
+}
+
+#Preview {
+    HomeView()
+        .environmentObject(MachineStore())
+        .environmentObject(BluetoothService())
+}
