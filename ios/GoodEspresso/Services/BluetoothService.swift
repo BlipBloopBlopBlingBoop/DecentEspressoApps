@@ -157,27 +157,34 @@ class BluetoothService: NSObject, ObservableObject {
     func uploadProfile(_ profile: Recipe) async throws {
         guard let headerChar = characteristics[DecentUUIDs.headerWrite],
               let frameChar = characteristics[DecentUUIDs.frameWrite] else {
+            print("[BluetoothService] ERROR: Profile characteristics not found!")
+            print("[BluetoothService] Available characteristics: \(characteristics.keys.map { $0.uuidString.prefix(8) })")
             throw BluetoothError.characteristicNotFound
         }
 
-        print("[BluetoothService] Uploading profile: \(profile.name)")
+        print("[BluetoothService] ========== UPLOADING PROFILE: \(profile.name) ==========")
+        print("[BluetoothService] Total steps: \(profile.steps.count)")
 
         // Write header
         let headerData = encodeProfileHeader(profile)
-        try await writeValue(headerData, for: headerChar)
-        print("[BluetoothService] Header written")
+        print("[BluetoothService] Header bytes: \(headerData.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        try await writeValueWithDelay(headerData, for: headerChar, delayMs: 100)
+        print("[BluetoothService] ✓ Header written")
 
-        // Write each frame
+        // Write each frame with delay between writes
         for (index, step) in profile.steps.enumerated() {
-            let frameData = encodeProfileFrame(step, frameNumber: index)
-            try await writeValue(frameData, for: frameChar)
-            print("[BluetoothService] Frame \(index) written")
+            let frameData = encodeProfileFrame(step, frameNumber: index, totalFrames: profile.steps.count)
+            print("[BluetoothService] Frame \(index) [\(step.name)] bytes: \(frameData.map { String(format: "%02X", $0) }.joined(separator: " "))")
+            try await writeValueWithDelay(frameData, for: frameChar, delayMs: 100)
+            print("[BluetoothService] ✓ Frame \(index) written")
         }
 
         // Write tail
         let tailData = encodeProfileTail(frameCount: profile.steps.count)
-        try await writeValue(tailData, for: frameChar)
-        print("[BluetoothService] Tail written - Profile upload complete")
+        print("[BluetoothService] Tail bytes: \(tailData.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        try await writeValueWithDelay(tailData, for: frameChar, delayMs: 100)
+        print("[BluetoothService] ✓ Tail written")
+        print("[BluetoothService] ========== PROFILE UPLOAD COMPLETE ==========")
     }
 
     // MARK: - Profile Encoding
@@ -185,17 +192,20 @@ class BluetoothService: NSObject, ObservableObject {
     private func encodeProfileHeader(_ profile: Recipe) -> Data {
         var data = Data(count: 5)
 
-        // Byte 0: Header version
+        // Byte 0: Header version (always 1)
         data[0] = 0x01
 
         // Byte 1: Number of frames
         data[1] = UInt8(min(profile.steps.count, 255))
 
         // Byte 2: Number of preinfusion frames
+        // Count consecutive low-pressure/flow steps at the start
         var preinfuseFrames: UInt8 = 0
-        if let firstStep = profile.steps.first {
-            if firstStep.pressure <= 4 && firstStep.flow <= 3 {
-                preinfuseFrames = 1
+        for step in profile.steps {
+            if step.pressure <= 4 && step.flow <= 3 {
+                preinfuseFrames += 1
+            } else {
+                break
             }
         }
         data[2] = preinfuseFrames
@@ -206,22 +216,28 @@ class BluetoothService: NSObject, ObservableObject {
         // Byte 4: Maximum flow (6.0 ml/s * 16 = 96)
         data[4] = UInt8(min(6.0 * 16, 255))
 
+        print("[BluetoothService] Header: version=1, frames=\(profile.steps.count), preinfuse=\(preinfuseFrames)")
         return data
     }
 
-    private func encodeProfileFrame(_ step: ProfileStep, frameNumber: Int) -> Data {
+    private func encodeProfileFrame(_ step: ProfileStep, frameNumber: Int, totalFrames: Int) -> Data {
         var data = Data(count: 8)
 
         // Byte 0: Frame number
         data[0] = UInt8(frameNumber)
 
+        // Determine control mode
+        let isFlowControl = step.flow > 0
+        let isPressureControl = step.pressure > 0 && step.flow == 0
+        let isSteepStep = step.pressure == 0 && step.flow == 0
+
         // Byte 1: Flags
-        let isFlowControl = step.pressure == 0 && step.flow > 0
         var flag: UInt8 = 0x00
 
         if isFlowControl {
             flag |= 0x01  // CtrlF - Flow priority
         }
+        // If neither flow nor pressure (steep), default to pressure mode with 0 pressure
 
         flag |= 0x10  // TMixTemp - Target mixer temperature
 
@@ -249,20 +265,24 @@ class BluetoothService: NSObject, ObservableObject {
 
         data[1] = flag
 
-        // Byte 2: SetVal (pressure or flow)
-        let setVal = isFlowControl ? step.flow : step.pressure
+        // Byte 2: SetVal (pressure or flow, scaled * 16)
+        let setVal: Double
+        if isFlowControl {
+            setVal = step.flow
+        } else {
+            setVal = step.pressure  // Will be 0 for steep steps
+        }
         data[2] = UInt8(min(setVal * 16, 255))
 
-        // Byte 3: Temperature (scaled * 2)
+        // Byte 3: Temperature (scaled * 2 for 0.5°C resolution)
         data[3] = UInt8(min(step.temperature * 2, 255))
 
         // Byte 4: Frame duration (F8_1_7 format)
         var duration = step.exit.value
         if step.exit.type == .weight {
-            // Estimate time from weight
             duration = estimateTimeFromWeight(step.exit.value, flow: step.flow)
         } else if step.exit.type == .pressure || step.exit.type == .flow {
-            duration = 60  // Max timeout
+            duration = 60  // Max timeout for condition-based exits
         }
         data[4] = convertToF8_1_7(duration)
 
@@ -273,13 +293,42 @@ class BluetoothService: NSObject, ObservableObject {
         data[6] = 0x00
         data[7] = 0x00
 
+        // Log frame details
+        var mode = "PRESSURE"
+        if isFlowControl { mode = "FLOW" }
+        if isSteepStep { mode = "STEEP" }
+
+        var flagNames: [String] = []
+        if flag & 0x01 != 0 { flagNames.append("CtrlF") }
+        if flag & 0x02 != 0 { flagNames.append("DoCompare") }
+        if flag & 0x04 != 0 { flagNames.append("DC_GT") }
+        if flag & 0x08 != 0 { flagNames.append("DC_CompF") }
+        if flag & 0x10 != 0 { flagNames.append("TMixTemp") }
+        if flag & 0x20 != 0 { flagNames.append("Interpolate") }
+        if flag & 0x40 != 0 { flagNames.append("IgnoreLimit") }
+
+        print("[BluetoothService] Frame \(frameNumber) '\(step.name)': \(mode), setVal=\(setVal), temp=\(step.temperature)°C, duration=\(duration)s, flags=[\(flagNames.joined(separator: ","))]")
+
         return data
     }
 
     private func encodeProfileTail(frameCount: Int) -> Data {
         var data = Data(count: 8)
+
+        // Byte 0: Frame count (signals end of profile)
         data[0] = UInt8(frameCount)
-        // Remaining bytes are 0 (padding)
+
+        // Bytes 1-2: MaxTotalVolume (16-bit, 0 = no limit)
+        data[1] = 0x00
+        data[2] = 0x00
+
+        // Bytes 3-7: Padding
+        data[3] = 0x00
+        data[4] = 0x00
+        data[5] = 0x00
+        data[6] = 0x00
+        data[7] = 0x00
+
         return data
     }
 
@@ -307,10 +356,22 @@ class BluetoothService: NSObject, ObservableObject {
 
         return try await withCheckedThrowingContinuation { continuation in
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
-            // Note: In a production app, you'd want to track the write completion
-            // through peripheral(_:didWriteValueFor:error:) delegate method
-            // For simplicity, we'll just wait a short time
+            // Wait for write acknowledgment
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                continuation.resume()
+            }
+        }
+    }
+
+    private func writeValueWithDelay(_ data: Data, for characteristic: CBCharacteristic, delayMs: Int) async throws {
+        guard let peripheral = connectedPeripheral else {
+            throw BluetoothError.notConnected
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            peripheral.writeValue(data, for: characteristic, type: .withResponse)
+            // Wait for write acknowledgment plus additional delay for GATT queue
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0) {
                 continuation.resume()
             }
         }

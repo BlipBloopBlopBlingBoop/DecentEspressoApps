@@ -419,7 +419,14 @@ struct ProfilesData {
     // 2. Pressure ramps to open the valve
     // 3. Fill and steep repeatedly in pulses (not continuous flow)
 
+    // MARK: - Tea Profiles
+    // All tea profiles use proper single-mode control:
+    // - Flow control (flow > 0, pressure = 0): For fill and pulse steps
+    // - Pressure control (pressure > 0, flow = 0): For valve open steps
+    // - Pause/Steep (pressure = 0, flow = 0): For steeping
+
     static let teaProfiles: [Recipe] = [
+        // MARK: - Green Tea
         Recipe(
             id: "green-tea",
             name: "Green Tea - Pulse Brew",
@@ -431,43 +438,38 @@ struct ProfilesData {
             usageCount: 0,
             targetWeight: 200,
             steps: [
-                // Step 1: Initial basket fill
                 ProfileStep(
                     name: "Initial Fill",
                     temperature: 78,
                     pressure: 0,
-                    flow: 4.0,
+                    flow: 4.0,  // Flow control - fill basket
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 5)
                 ),
-                // Step 2: Pressure ramp to open valve
                 ProfileStep(
                     name: "Valve Open",
                     temperature: 78,
-                    pressure: 1.5,
-                    flow: 2.0,
+                    pressure: 1.5,  // Pressure control - open valve
+                    flow: 0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
-                // Step 3: First steep (no flow)
                 ProfileStep(
                     name: "Steep 1",
                     temperature: 78,
                     pressure: 0,
-                    flow: 0,
+                    flow: 0,  // Pause - steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 8)
                 ),
-                // Step 4: Pulse 1
                 ProfileStep(
                     name: "Pulse 1",
                     temperature: 78,
-                    pressure: 0.8,
-                    flow: 3.0,
+                    pressure: 0,
+                    flow: 3.0,  // Flow control - pulse
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
                 ),
-                // Step 5: Second steep
                 ProfileStep(
                     name: "Steep 2",
                     temperature: 78,
@@ -476,16 +478,14 @@ struct ProfilesData {
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 8)
                 ),
-                // Step 6: Pulse 2
                 ProfileStep(
                     name: "Pulse 2",
                     temperature: 78,
-                    pressure: 0.8,
+                    pressure: 0,
                     flow: 3.0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
                 ),
-                // Step 7: Third steep
                 ProfileStep(
                     name: "Steep 3",
                     temperature: 78,
@@ -494,12 +494,11 @@ struct ProfilesData {
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 8)
                 ),
-                // Step 8: Final drain
                 ProfileStep(
                     name: "Final Drain",
                     temperature: 78,
-                    pressure: 1.0,
-                    flow: 3.5,
+                    pressure: 0,
+                    flow: 3.5,  // Flow control - drain
                     transition: "smooth",
                     exit: ExitCondition(type: .weight, value: 200)
                 )
@@ -509,6 +508,7 @@ struct ProfilesData {
             dose: 4
         ),
 
+        // MARK: - Black Tea
         Recipe(
             id: "black-tea",
             name: "Black Tea - Pulse Brew",
@@ -524,15 +524,15 @@ struct ProfilesData {
                     name: "Initial Fill",
                     temperature: 90,
                     pressure: 0,
-                    flow: 4.5,
+                    flow: 4.5,  // Flow control - fill
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 5)
                 ),
                 ProfileStep(
                     name: "Valve Open",
                     temperature: 90,
-                    pressure: 2.0,
-                    flow: 2.5,
+                    pressure: 2.0,  // Pressure control - open valve
+                    flow: 0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
@@ -540,15 +540,15 @@ struct ProfilesData {
                     name: "Steep 1",
                     temperature: 90,
                     pressure: 0,
-                    flow: 0,
+                    flow: 0,  // Pause - steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 12)
                 ),
                 ProfileStep(
                     name: "Pulse 1",
                     temperature: 90,
-                    pressure: 1.2,
-                    flow: 3.5,
+                    pressure: 0,
+                    flow: 3.5,  // Flow control - pulse
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 8)
                 ),
@@ -563,7 +563,7 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Pulse 2",
                     temperature: 90,
-                    pressure: 1.2,
+                    pressure: 0,
                     flow: 3.5,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 8)
@@ -571,8 +571,8 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Final Drain",
                     temperature: 90,
-                    pressure: 1.5,
-                    flow: 4.0,
+                    pressure: 0,
+                    flow: 4.0,  // Flow control - drain
                     transition: "smooth",
                     exit: ExitCondition(type: .weight, value: 200)
                 )
@@ -582,6 +582,7 @@ struct ProfilesData {
             dose: 3
         ),
 
+        // MARK: - White Tea
         Recipe(
             id: "white-tea",
             name: "White Tea - Pulse Brew",
@@ -597,15 +598,15 @@ struct ProfilesData {
                     name: "Initial Fill",
                     temperature: 73,
                     pressure: 0,
-                    flow: 3.0,
+                    flow: 3.0,  // Flow control - gentle fill
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
                 ),
                 ProfileStep(
                     name: "Valve Open",
                     temperature: 73,
-                    pressure: 1.0,
-                    flow: 1.5,
+                    pressure: 1.0,  // Pressure control - gentle valve open
+                    flow: 0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
@@ -613,14 +614,14 @@ struct ProfilesData {
                     name: "Steep 1",
                     temperature: 73,
                     pressure: 0,
-                    flow: 0,
+                    flow: 0,  // Pause - steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 12)
                 ),
                 ProfileStep(
                     name: "Pulse 1",
                     temperature: 73,
-                    pressure: 0.6,
+                    pressure: 0,  // Flow control only
                     flow: 2.5,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
@@ -636,7 +637,7 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Pulse 2",
                     temperature: 73,
-                    pressure: 0.6,
+                    pressure: 0,  // Flow control only
                     flow: 2.5,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
@@ -652,7 +653,7 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Final Drain",
                     temperature: 73,
-                    pressure: 0.8,
+                    pressure: 0,  // Flow control only
                     flow: 3.0,
                     transition: "smooth",
                     exit: ExitCondition(type: .weight, value: 200)
@@ -663,6 +664,8 @@ struct ProfilesData {
             dose: 5
         ),
 
+        // MARK: - Oolong Tea (Pulse Brew)
+        // Pattern: Fill (flow) -> Valve Open (pressure) -> Steep (pause) -> Pulse (flow) -> repeat
         Recipe(
             id: "oolong-tea",
             name: "Oolong Tea - Pulse Brew",
@@ -678,31 +681,31 @@ struct ProfilesData {
                     name: "Initial Fill",
                     temperature: 85,
                     pressure: 0,
-                    flow: 4.0,
+                    flow: 4.0,  // Flow control - fill basket
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 5)
                 ),
                 ProfileStep(
                     name: "Valve Open",
                     temperature: 85,
-                    pressure: 1.8,
-                    flow: 2.0,
+                    pressure: 2.0,  // Pressure control - open valve
+                    flow: 0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
                 ProfileStep(
                     name: "Steep 1",
                     temperature: 85,
-                    pressure: 0,
-                    flow: 0,
+                    pressure: 0,  // No pressure
+                    flow: 0,     // No flow - pause/steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 8)
                 ),
                 ProfileStep(
                     name: "Pulse 1",
                     temperature: 85,
-                    pressure: 1.0,
-                    flow: 3.0,
+                    pressure: 0,
+                    flow: 3.5,  // Flow control - gentle pulse
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
                 ),
@@ -717,8 +720,8 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Pulse 2",
                     temperature: 85,
-                    pressure: 1.0,
-                    flow: 3.0,
+                    pressure: 0,
+                    flow: 3.5,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 6)
                 ),
@@ -733,8 +736,8 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Final Drain",
                     temperature: 85,
-                    pressure: 1.2,
-                    flow: 3.5,
+                    pressure: 0,
+                    flow: 4.0,  // Flow control - drain
                     transition: "smooth",
                     exit: ExitCondition(type: .weight, value: 200)
                 )
@@ -744,6 +747,7 @@ struct ProfilesData {
             dose: 6
         ),
 
+        // MARK: - Pu-erh Tea (Pulse Brew)
         Recipe(
             id: "puerh-tea",
             name: "Pu-erh Tea - Pulse Brew",
@@ -759,15 +763,15 @@ struct ProfilesData {
                     name: "Rinse",
                     temperature: 95,
                     pressure: 0,
-                    flow: 5.0,
+                    flow: 5.0,  // Flow control - quick rinse
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
                 ProfileStep(
                     name: "Valve Open",
                     temperature: 95,
-                    pressure: 2.5,
-                    flow: 3.0,
+                    pressure: 2.5,  // Pressure control - open valve
+                    flow: 0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
@@ -775,15 +779,15 @@ struct ProfilesData {
                     name: "Steep 1",
                     temperature: 95,
                     pressure: 0,
-                    flow: 0,
+                    flow: 0,  // Pause - steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 6)
                 ),
                 ProfileStep(
                     name: "Pulse 1",
                     temperature: 95,
-                    pressure: 1.5,
-                    flow: 4.0,
+                    pressure: 0,
+                    flow: 4.0,  // Flow control - pulse
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 7)
                 ),
@@ -798,7 +802,7 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Pulse 2",
                     temperature: 95,
-                    pressure: 1.5,
+                    pressure: 0,
                     flow: 4.0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 7)
@@ -814,8 +818,8 @@ struct ProfilesData {
                 ProfileStep(
                     name: "Final Drain",
                     temperature: 95,
-                    pressure: 2.0,
-                    flow: 4.5,
+                    pressure: 0,
+                    flow: 4.5,  // Flow control - drain
                     transition: "smooth",
                     exit: ExitCondition(type: .weight, value: 200)
                 )
@@ -825,6 +829,7 @@ struct ProfilesData {
             dose: 7
         ),
 
+        // MARK: - Herbal Tisane (Pulse Brew)
         Recipe(
             id: "herbal-tisane",
             name: "Herbal Tisane - Pulse Brew",
@@ -840,15 +845,15 @@ struct ProfilesData {
                     name: "Initial Fill",
                     temperature: 95,
                     pressure: 0,
-                    flow: 4.5,
+                    flow: 4.5,  // Flow control - fill
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 5)
                 ),
                 ProfileStep(
                     name: "Valve Open",
                     temperature: 95,
-                    pressure: 2.0,
-                    flow: 2.5,
+                    pressure: 2.0,  // Pressure control - open valve
+                    flow: 0,
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 3)
                 ),
@@ -856,15 +861,15 @@ struct ProfilesData {
                     name: "Steep 1",
                     temperature: 95,
                     pressure: 0,
-                    flow: 0,
+                    flow: 0,  // Pause - steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 15)
                 ),
                 ProfileStep(
                     name: "Pulse 1",
                     temperature: 95,
-                    pressure: 1.0,
-                    flow: 3.5,
+                    pressure: 0,
+                    flow: 3.5,  // Flow control - pulse
                     transition: "smooth",
                     exit: ExitCondition(type: .time, value: 8)
                 ),
@@ -872,15 +877,15 @@ struct ProfilesData {
                     name: "Steep 2",
                     temperature: 95,
                     pressure: 0,
-                    flow: 0,
+                    flow: 0,  // Pause - steep
                     transition: "fast",
                     exit: ExitCondition(type: .time, value: 12)
                 ),
                 ProfileStep(
                     name: "Final Drain",
                     temperature: 95,
-                    pressure: 1.5,
-                    flow: 4.0,
+                    pressure: 0,
+                    flow: 4.0,  // Flow control - drain
                     transition: "smooth",
                     exit: ExitCondition(type: .weight, value: 200)
                 )
