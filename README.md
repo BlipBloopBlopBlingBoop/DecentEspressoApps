@@ -451,8 +451,8 @@ For issues and questions:
 
 ---
 
-**Made with care by Decent Espresso Ltd. and the open source community**
+**Made with care by Benjamin Rizkin and the open source community**
 
-Copyright (C) 2025 Decent Espresso Ltd. Licensed under GPL-3.0-or-later.
+Copyright (C) 2025 Benjamin Rizkin. Licensed under GPL-3.0-or-later.
 
 *Version 2.0.0 • Last Updated: November 2025*
