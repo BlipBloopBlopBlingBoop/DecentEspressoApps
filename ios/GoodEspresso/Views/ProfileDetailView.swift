@@ -12,6 +12,12 @@ struct ProfileDetailView: View {
     @EnvironmentObject var bluetoothService: BluetoothService
     @Environment(\.dismiss) private var dismiss
     let recipe: Recipe
+    var onEdit: ((Recipe) -> Void)?
+
+    @State private var showingEditor = false
+    @State private var showingShareSheet = false
+    @State private var exportURL: URL?
+    @State private var showingDeleteConfirm = false
 
     var isActive: Bool {
         machineStore.activeRecipe?.id == recipe.id
@@ -19,6 +25,10 @@ struct ProfileDetailView: View {
 
     var isTea: Bool {
         recipe.id.contains("tea") || recipe.id.contains("herbal") || recipe.id.contains("tisane")
+    }
+
+    var isCustom: Bool {
+        machineStore.isCustomProfile(recipe)
     }
 
     var body: some View {
@@ -43,6 +53,22 @@ struct ProfileDetailView: View {
 
                 // Metadata
                 MetadataSection(recipe: recipe)
+
+                // Export/Delete for custom profiles
+                if isCustom {
+                    VStack(spacing: 12) {
+                        Button(role: .destructive) {
+                            showingDeleteConfirm = true
+                        } label: {
+                            Label("Delete Profile", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
             }
             .padding()
         }
@@ -50,7 +76,34 @@ struct ProfileDetailView: View {
         .navigationTitle(recipe.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // Export button
+                Button {
+                    exportProfile()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+
+                // Duplicate button
+                Menu {
+                    Button {
+                        let copy = machineStore.duplicateProfile(recipe)
+                        machineStore.saveCustomProfile(copy)
+                    } label: {
+                        Label("Duplicate", systemImage: "doc.on.doc")
+                    }
+
+                    if isCustom {
+                        Button {
+                            showingEditor = true
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+
                 Button {
                     machineStore.toggleFavorite(recipe)
                 } label: {
@@ -59,7 +112,43 @@ struct ProfileDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingEditor) {
+            ProfileEditorView(existingRecipe: recipe)
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            if let url = exportURL {
+                ShareSheet(items: [url])
+            }
+        }
+        .alert("Delete Profile?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                machineStore.deleteCustomProfile(recipe)
+                dismiss()
+            }
+        } message: {
+            Text("This action cannot be undone.")
+        }
     }
+
+    private func exportProfile() {
+        if let url = machineStore.exportProfileToFile(recipe) {
+            exportURL = url
+            showingShareSheet = true
+        }
+    }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Profile Header
@@ -177,9 +266,9 @@ struct ProfileVisualization: View {
 
             // Legend
             HStack(spacing: 16) {
-                LegendItem(color: .blue, text: "Pressure")
-                LegendItem(color: .cyan, text: "Flow")
-                LegendItem(color: .gray, text: "Steep")
+                ProfileLegendItem(color: .blue, text: "Pressure")
+                ProfileLegendItem(color: .cyan, text: "Flow")
+                ProfileLegendItem(color: .gray, text: "Steep")
             }
             .font(.caption)
         }
@@ -210,7 +299,7 @@ struct ProfileVisualization: View {
     }
 }
 
-struct LegendItem: View {
+struct ProfileLegendItem: View {
     let color: Color
     let text: String
 

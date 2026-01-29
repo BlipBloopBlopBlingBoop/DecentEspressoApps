@@ -16,16 +16,25 @@ import SwiftUI
 struct GoodEspressoApp: App {
     @StateObject private var machineStore = MachineStore()
     @StateObject private var bluetoothService = BluetoothService()
+    @StateObject private var scaleService = ScaleService()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(machineStore)
                 .environmentObject(bluetoothService)
+                .environmentObject(scaleService)
                 .preferredColorScheme(.dark)
                 .onAppear {
                     // Set up the connection between bluetooth service and machine store
                     bluetoothService.machineStore = machineStore
+
+                    // Set up scale weight callback
+                    scaleService.onWeightUpdate = { weight in
+                        Task { @MainActor in
+                            machineStore.updateScaleWeight(weight)
+                        }
+                    }
                 }
         }
     }
