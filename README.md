@@ -1,6 +1,6 @@
 # Decent Espresso Control
 
-> **⚠️ IMPORTANT DISCLAIMER:** This is an **unofficial**, **educational** project created for demonstration and learning purposes only. This application is **NOT affiliated with, endorsed by, or sponsored by Decent Espresso Ltd.** Use entirely at your own risk. See [Legal Disclaimer](#legal-disclaimer) below.
+> **Official open-source software by Decent Espresso Ltd.** This application is provided under the GPL-3.0 license. While we strive for quality, please use responsibly and see the [Legal Disclaimer](#legal-disclaimer) below for important safety information.
 
 A fully-functional mobile web application for controlling Decent espresso machines via Bluetooth. This app provides comprehensive control over all machine functions, real-time data visualization, recipe management, shot history tracking, and advanced analytics.
 
@@ -323,33 +323,29 @@ The app uses Zustand for state management with four main stores:
 
 ## Contributing
 
-This is an open-source educational project. Contributions are welcome for learning purposes!
+We welcome contributions from the community! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
-## ⚠️ Legal Disclaimer
+By contributing, you agree that your contributions will be licensed under the GPL-3.0 license.
 
-### Educational & Demonstration Purpose Only
+## Legal Disclaimer
 
-This application is provided strictly for **educational and demonstration purposes**. It is a proof-of-concept project showcasing Web Bluetooth API integration and should **NOT** be considered production-ready software.
+### Open Source Software
 
-### Use at Your Own Risk
+This is official open-source software released by Decent Espresso Ltd. under the GNU General Public License v3.0 (GPL-3.0).
 
-This software is provided **"AS IS"** without warranty of any kind, express or implied. By using this application, you acknowledge that:
+### Warranty Disclaimer
 
-- ✋ You use this software entirely at your own risk
-- ⚠️ The developers assume **NO LIABILITY** for any damages, injuries, or losses
-- 🔧 You are responsible for the safe operation of your espresso machine
-- 📜 **NO WARRANTIES** are provided regarding functionality, safety, or reliability
+This software is provided **"AS IS"** without warranty of any kind, express or implied, as permitted under the GPL-3.0 license. By using this application, you acknowledge that:
 
-### Intellectual Property Rights
+- You use this software at your own risk
+- No warranties are provided regarding functionality, safety, or reliability
+- You are responsible for the safe operation of your espresso machine
+
+### Intellectual Property
 
 **Decent Espresso®** and all related trademarks, logos, and intellectual property belong to **Decent Espresso Ltd.**
 
-This project is an independent, unofficial implementation and is:
-- ❌ **NOT affiliated with Decent Espresso Ltd.**
-- ❌ **NOT endorsed by Decent Espresso Ltd.**
-- ❌ **NOT sponsored by Decent Espresso Ltd.**
-
-All original design, engineering, and proprietary elements of Decent Espresso machines remain the exclusive property of Decent Espresso Ltd. and its rightful owners.
+The GPL-3.0 license applies to the source code only. It does not grant any rights to use Decent Espresso trademarks or branding.
 
 ### Safety Warning
 
@@ -368,9 +364,9 @@ Improper use can result in:
 - Ensure proper ventilation and stable placement
 - Regularly maintain and descale your machine
 
-### No Official Support
+### Community Support
 
-This is a community/hobbyist project. The original equipment manufacturers and their official support channels are **NOT responsible** for issues arising from the use of this software.
+This is open-source software. For issues and contributions, please use the GitHub issue tracker and pull requests.
 
 ### Privacy & Data
 
@@ -379,20 +375,34 @@ This is a community/hobbyist project. The original equipment manufacturers and t
 - The developers make **no guarantees** about data persistence, privacy, or security
 - You are responsible for backing up your own data
 
-### Liability Waiver
+### Limitation of Liability
 
-By using this software, you agree to **release, indemnify, and hold harmless** the developers, contributors, and any affiliated parties from any and all liability, claims, damages, or expenses arising from your use of this application.
+As stated in the GPL-3.0 license, in no event shall the copyright holders or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages arising from the use of this software.
 
-### Entertainment Value
+### Intended Use
 
-This project is created for fun, learning, and experimentation with modern web technologies. It is **NOT** intended for:
-- ❌ Commercial use
-- ❌ Replacement for official manufacturer software
-- ❌ Critical or production applications
+This project provides an alternative interface for controlling Decent Espresso machines. It is designed for:
+- Personal and commercial use with Decent machines
+- Learning and experimentation with modern web technologies
+- Community-driven improvements and customizations
 
 ## License
 
-MIT License - See LICENSE file for details. Note that this license applies to the code only and does not grant any rights to Decent Espresso trademarks or intellectual property.
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)** - see the [LICENSE](LICENSE) file for details.
+
+### What this means:
+- **Freedom to use**: You can use this software for any purpose
+- **Freedom to study**: You can examine how the software works and modify it
+- **Freedom to share**: You can redistribute copies of the original software
+- **Freedom to improve**: You can distribute modified versions
+
+### Requirements:
+- Any derivative work must also be licensed under GPL-3.0
+- Source code must be made available when distributing the software
+- Changes to the code must be documented
+- The original copyright and license notices must be preserved
+
+Note: This license applies to the code only and does not grant any rights to Decent Espresso trademarks or intellectual property.
 
 ## Support
 
@@ -441,8 +451,8 @@ For issues and questions:
 
 ---
 
-**Made with ☕ by the community • For educational purposes only • No warranty provided**
+**Made with care by Decent Espresso Ltd. and the open source community**
 
-© 2025 • This is an unofficial educational project • Decent Espresso® is a trademark of Decent Espresso Ltd.
+Copyright (C) 2025 Decent Espresso Ltd. Licensed under GPL-3.0-or-later.
 
 *Version 2.0.0 • Last Updated: November 2025*
