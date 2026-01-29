@@ -6,18 +6,24 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var machineStore: MachineStore
     @EnvironmentObject var bluetoothService: BluetoothService
+    @EnvironmentObject var scaleService: ScaleService
     @State private var showingLegal = false
     @State private var showingAbout = false
+    @State private var showingScaleSheet = false
+    @State private var showingImportSheet = false
+    @State private var importError: String?
+    @State private var showingImportError = false
 
     var body: some View {
         NavigationStack {
             List {
-                // Connection Section
-                Section("Connection") {
+                // Machine Connection Section
+                Section("Espresso Machine") {
                     HStack {
                         Label("Status", systemImage: "antenna.radiowaves.left.and.right")
                         Spacer()
@@ -43,6 +49,66 @@ struct SettingsView: View {
                     }
                 }
 
+                // Scale Connection Section
+                Section("BLE Scale") {
+                    HStack {
+                        Label("Scale Status", systemImage: "scalemass")
+                        Spacer()
+                        Text(machineStore.isScaleConnected ? "Connected" : "Disconnected")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let scaleName = machineStore.scaleName {
+                        HStack {
+                            Label("Scale", systemImage: "scalemass.fill")
+                            Spacer()
+                            Text(scaleName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if machineStore.isScaleConnected {
+                        HStack {
+                            Label("Weight", systemImage: "number")
+                            Spacer()
+                            Text(String(format: "%.1f g", machineStore.scaleWeight))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button {
+                            scaleService.tare()
+                        } label: {
+                            Label("Tare Scale", systemImage: "arrow.counterclockwise")
+                        }
+
+                        Button(role: .destructive) {
+                            scaleService.disconnect()
+                            machineStore.setScaleConnected(false)
+                        } label: {
+                            Label("Disconnect Scale", systemImage: "xmark.circle")
+                        }
+                    } else {
+                        Button {
+                            showingScaleSheet = true
+                        } label: {
+                            Label("Connect Scale", systemImage: "plus.circle")
+                        }
+                    }
+                }
+
+                // Scale Settings
+                Section("Scale Settings") {
+                    Toggle("Auto Tare on Start", isOn: $machineStore.autoTare)
+                        .onChange(of: machineStore.autoTare) { _ in
+                            machineStore.saveSettings()
+                        }
+
+                    Toggle("Auto Stop on Target Weight", isOn: $machineStore.autoStopOnWeight)
+                        .onChange(of: machineStore.autoStopOnWeight) { _ in
+                            machineStore.saveSettings()
+                        }
+                }
+
                 // Units Section
                 Section("Units") {
                     Picker("Temperature", selection: $machineStore.temperatureUnit) {
@@ -53,6 +119,32 @@ struct SettingsView: View {
                     Picker("Weight", selection: $machineStore.weightUnit) {
                         Text("Grams (g)").tag("grams")
                         Text("Ounces (oz)").tag("ounces")
+                    }
+                }
+
+                // Profiles Section
+                Section("Profiles") {
+                    HStack {
+                        Label("Custom Profiles", systemImage: "square.stack.3d.up")
+                        Spacer()
+                        Text("\(machineStore.customRecipes.count)")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button {
+                        showingImportSheet = true
+                    } label: {
+                        Label("Import Profile", systemImage: "square.and.arrow.down")
+                    }
+
+                    if !machineStore.customRecipes.isEmpty {
+                        Button(role: .destructive) {
+                            machineStore.customRecipes.removeAll()
+                            machineStore.saveCustomRecipes()
+                            machineStore.loadRecipes()
+                        } label: {
+                            Label("Delete All Custom Profiles", systemImage: "trash")
+                        }
                     }
                 }
 
@@ -135,6 +227,131 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingAbout) {
                 AboutView()
+            }
+            .sheet(isPresented: $showingScaleSheet) {
+                ScaleConnectionSheet(scaleService: scaleService, machineStore: machineStore)
+            }
+            .fileImporter(
+                isPresented: $showingImportSheet,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        // Access the file
+                        if url.startAccessingSecurityScopedResource() {
+                            defer { url.stopAccessingSecurityScopedResource() }
+
+                            if machineStore.importAndSaveProfile(from: (try? Data(contentsOf: url)) ?? Data()) {
+                                // Success - profile imported
+                            } else {
+                                importError = "Could not parse profile file. Make sure it's a valid JSON profile."
+                                showingImportError = true
+                            }
+                        }
+                    }
+                case .failure(let error):
+                    importError = error.localizedDescription
+                    showingImportError = true
+                }
+            }
+            .alert("Import Error", isPresented: $showingImportError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(importError ?? "Unknown error")
+            }
+        }
+    }
+}
+
+// MARK: - Scale Connection Sheet
+
+struct ScaleConnectionSheet: View {
+    @ObservedObject var scaleService: ScaleService
+    @ObservedObject var machineStore: MachineStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if scaleService.isScanning {
+                    Section {
+                        HStack {
+                            ProgressView()
+                                .padding(.trailing, 8)
+                            Text("Scanning for scales...")
+                        }
+                    }
+                }
+
+                Section("Supported Scales") {
+                    Text("• Bookoo (Ultra, Mini)")
+                    Text("• Acaia (Lunar, Pearl, Pyxis)")
+                    Text("• Felicita (Arc, Incline)")
+                    Text("• Hiroia Jimmy")
+                    Text("• Timemore Black Mirror")
+                    Text("• Generic BLE scales")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                if !scaleService.discoveredScales.isEmpty {
+                    Section("Found Scales") {
+                        ForEach(scaleService.discoveredScales, id: \.identifier) { scale in
+                            Button {
+                                scaleService.connect(to: scale)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "scalemass")
+                                    Text(scale.name ?? "Unknown Scale")
+                                    Spacer()
+                                    if scaleService.connectedScale?.identifier == scale.identifier {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.green)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let error = scaleService.connectionError {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Connect Scale")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        scaleService.stopScanning()
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if scaleService.isConnected {
+                        Button("Done") {
+                            machineStore.setScaleConnected(true, name: scaleService.connectedScale?.name)
+                            dismiss()
+                        }
+                    } else {
+                        Button(scaleService.isScanning ? "Stop" : "Scan") {
+                            if scaleService.isScanning {
+                                scaleService.stopScanning()
+                            } else {
+                                scaleService.startScanning()
+                            }
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                scaleService.startScanning()
             }
         }
     }

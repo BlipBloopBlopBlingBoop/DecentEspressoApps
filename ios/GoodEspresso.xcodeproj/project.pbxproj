@@ -25,6 +25,7 @@
 		1A000001F /* MachineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000020; };
 		1A0000035 /* ProfileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000036; };
 		1A0000037 /* WatchConnectivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000038; };
+		1A0000039 /* ScaleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000003A; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 		1A0000022 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A0000036 /* ProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorView.swift; sourceTree = "<group>"; };
 		1A0000038 /* WatchConnectivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityService.swift; sourceTree = "<group>"; };
+		1A000003A /* ScaleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaleService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -123,6 +125,7 @@
 			children = (
 				1A000000A /* BluetoothService.swift */,
 				1A0000038 /* WatchConnectivityService.swift */,
+				1A000003A /* ScaleService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -221,6 +224,7 @@
 				1A000001F /* MachineStore.swift in Sources */,
 				1A0000035 /* ProfileEditorView.swift in Sources */,
 				1A0000037 /* WatchConnectivityService.swift in Sources */,
+				1A0000039 /* ScaleService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
