@@ -7,6 +7,24 @@
 
 import Foundation
 import CoreBluetooth
+import SwiftUI
+
+// MARK: - Cross-Platform Colors
+extension Color {
+    #if canImport(UIKit)
+    static let systemGroupedBg = Color(.systemGroupedBackground)
+    static let secondarySystemGroupedBg = Color(.secondarySystemGroupedBackground)
+    static let tertiarySystemGroupedBg = Color(.tertiarySystemGroupedBackground)
+    #elseif canImport(AppKit)
+    static let systemGroupedBg = Color(nsColor: .windowBackgroundColor)
+    static let secondarySystemGroupedBg = Color(nsColor: .controlBackgroundColor)
+    static let tertiarySystemGroupedBg = Color(nsColor: .underPageBackgroundColor)
+    #else
+    static let systemGroupedBg = Color(white: 0.0)
+    static let secondarySystemGroupedBg = Color(white: 0.11)
+    static let tertiarySystemGroupedBg = Color(white: 0.17)
+    #endif
+}
 
 // MARK: - Decent Service UUIDs
 struct DecentUUIDs {

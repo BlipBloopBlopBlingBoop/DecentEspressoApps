@@ -221,7 +221,7 @@ struct ShotDetailSheet: View {
                             .frame(height: 200)
                     }
                     .padding()
-                    .background(Color(.secondarySystemGroupedBackground))
+                    .background(Color.secondarySystemGroupedBg)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                     // Shot Stats
@@ -235,7 +235,7 @@ struct ShotDetailSheet: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.systemGroupedBg)
             .navigationTitle(shot.profileName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -306,7 +306,7 @@ struct ShotStatsSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -351,7 +351,7 @@ struct RatingSection: View {
             .frame(maxWidth: .infinity)
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -370,7 +370,7 @@ struct NotesInputSection: View {
                 .lineLimit(3...6)
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

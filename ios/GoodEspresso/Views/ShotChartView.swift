@@ -103,7 +103,7 @@ struct ShotChartView: View {
                             }
                     )
                 }
-                .background(Color(.tertiarySystemGroupedBackground))
+                .background(Color.tertiarySystemGroupedBg)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
 
                 // X-axis (Time)

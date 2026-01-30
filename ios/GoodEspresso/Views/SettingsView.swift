@@ -392,7 +392,7 @@ struct AboutView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
-                    .background(Color(.secondarySystemGroupedBackground))
+                    .background(Color.secondarySystemGroupedBg)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                     // Features
@@ -412,7 +412,7 @@ struct AboutView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
-                    .background(Color(.secondarySystemGroupedBackground))
+                    .background(Color.secondarySystemGroupedBg)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                     // Credits
@@ -430,12 +430,12 @@ struct AboutView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
-                    .background(Color(.secondarySystemGroupedBackground))
+                    .background(Color.secondarySystemGroupedBg)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.systemGroupedBg)
             .navigationTitle("About")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

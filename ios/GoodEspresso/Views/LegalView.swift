@@ -177,7 +177,7 @@ struct LegalView: View {
                     .padding()
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.systemGroupedBg)
             .navigationTitle("Legal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -217,7 +217,7 @@ struct LegalSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
