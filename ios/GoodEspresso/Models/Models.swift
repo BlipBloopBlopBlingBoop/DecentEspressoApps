@@ -26,6 +26,36 @@ extension Color {
     #endif
 }
 
+// MARK: - Cross-Platform Navigation
+extension View {
+    @ViewBuilder
+    func inlineNavigationBarTitle() -> some View {
+        #if os(iOS)
+        self.navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
+    }
+}
+
+extension ToolbarItemPlacement {
+    static var topBarTrailingCompat: ToolbarItemPlacement {
+        #if os(iOS)
+        .topBarTrailing
+        #else
+        .automatic
+        #endif
+    }
+
+    static var topBarLeadingCompat: ToolbarItemPlacement {
+        #if os(iOS)
+        .topBarLeading
+        #else
+        .automatic
+        #endif
+    }
+}
+
 // MARK: - Decent Service UUIDs
 struct DecentUUIDs {
     static let serviceUUID = CBUUID(string: "0000A000-0000-1000-8000-00805F9B34FB")

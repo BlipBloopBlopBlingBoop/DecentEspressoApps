@@ -324,16 +324,16 @@ struct ScaleConnectionSheet: View {
                 }
             }
             .navigationTitle("Connect Scale")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarLeadingCompat) {
                     Button("Cancel") {
                         scaleService.stopScanning()
                         dismiss()
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailingCompat) {
                     if scaleService.isConnected {
                         Button("Done") {
                             machineStore.setScaleConnected(true, name: scaleService.connectedScale?.name)
@@ -437,9 +437,9 @@ struct AboutView: View {
             }
             .background(Color.systemGroupedBg)
             .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailingCompat) {
                     Button("Done") {
                         dismiss()
                     }

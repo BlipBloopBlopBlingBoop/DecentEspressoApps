@@ -29,9 +29,9 @@ struct ConnectionView: View {
             }
             .padding()
             .navigationTitle("Connection")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailingCompat) {
                     Button("Done") {
                         dismiss()
                     }

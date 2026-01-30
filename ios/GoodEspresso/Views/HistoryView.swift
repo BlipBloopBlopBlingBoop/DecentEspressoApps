@@ -237,15 +237,15 @@ struct ShotDetailSheet: View {
             }
             .background(Color.systemGroupedBg)
             .navigationTitle(shot.profileName)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarLeadingCompat) {
                     Button("Cancel") {
                         dismiss()
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailingCompat) {
                     Button("Save") {
                         if selectedRating > 0 {
                             machineStore.rateShot(shot, rating: selectedRating)

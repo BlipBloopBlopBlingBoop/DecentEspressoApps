@@ -146,7 +146,7 @@ struct ProfileEditorView: View {
                 }
             }
             .navigationTitle(isEditing ? "Edit Profile" : "New Profile")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -507,7 +507,7 @@ struct StepEditorSheet: View {
                 }
             }
             .navigationTitle(step == nil ? "Add Step" : "Edit Step")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
