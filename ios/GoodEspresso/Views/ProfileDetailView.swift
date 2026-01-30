@@ -74,9 +74,9 @@ struct ProfileDetailView: View {
         }
         .background(Color.systemGroupedBg)
         .navigationTitle(recipe.name)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationBarTitle()
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailingCompat) {
                 // Export button
                 Button {
                     exportProfile()

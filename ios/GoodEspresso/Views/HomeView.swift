@@ -39,7 +39,7 @@ struct HomeView: View {
             .background(Color.systemGroupedBg)
             .navigationTitle("Good Espresso")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailingCompat) {
                     Button {
                         showingConnectionSheet = true
                     } label: {

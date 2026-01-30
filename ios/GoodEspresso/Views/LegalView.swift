@@ -179,10 +179,10 @@ struct LegalView: View {
             }
             .background(Color.systemGroupedBg)
             .navigationTitle("Legal")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 if hasAccepted {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .topBarTrailingCompat) {
                         Button("Done") {
                             isPresented = false
                         }
