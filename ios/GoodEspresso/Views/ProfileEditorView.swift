@@ -110,7 +110,9 @@ struct ProfileEditorView: View {
                     HStack {
                         Text("Steps (\(steps.count))")
                         Spacer()
+                        #if os(iOS)
                         EditButton()
+                        #endif
                     }
                 }
 
@@ -423,8 +425,8 @@ struct StepEditorSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .onChange(of: stepMode) { newMode in
-                        switch newMode {
+                    .onChange(of: stepMode) {
+                        switch stepMode {
                         case .pressure:
                             pressure = 9
                             flow = 0
