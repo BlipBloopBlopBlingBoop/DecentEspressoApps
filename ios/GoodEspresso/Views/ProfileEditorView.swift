@@ -425,8 +425,8 @@ struct StepEditorSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .onChange(of: stepMode) {
-                        switch stepMode {
+                    .onChangeCompat(of: stepMode) { newMode in
+                        switch newMode {
                         case .pressure:
                             pressure = 9
                             flow = 0
