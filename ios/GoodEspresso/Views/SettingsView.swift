@@ -99,12 +99,12 @@ struct SettingsView: View {
                 // Scale Settings
                 Section("Scale Settings") {
                     Toggle("Auto Tare on Start", isOn: $machineStore.autoTare)
-                        .onChange(of: machineStore.autoTare) { _ in
+                        .onChange(of: machineStore.autoTare) {
                             machineStore.saveSettings()
                         }
 
                     Toggle("Auto Stop on Target Weight", isOn: $machineStore.autoStopOnWeight)
-                        .onChange(of: machineStore.autoStopOnWeight) { _ in
+                        .onChange(of: machineStore.autoStopOnWeight) {
                             machineStore.saveSettings()
                         }
                 }

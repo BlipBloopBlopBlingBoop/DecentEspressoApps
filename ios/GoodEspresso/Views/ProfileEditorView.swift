@@ -64,7 +64,9 @@ struct ProfileEditorView: View {
                         Text("Target Weight")
                         Spacer()
                         TextField("g", value: $targetWeight, format: .number)
+                            #if os(iOS)
                             .keyboardType(.decimalPad)
+                            #endif
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
                         Text("g")
@@ -75,7 +77,9 @@ struct ProfileEditorView: View {
                         Text("Dose")
                         Spacer()
                         TextField("g", value: $dose, format: .number)
+                            #if os(iOS)
                             .keyboardType(.decimalPad)
+                            #endif
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
                         Text("g")
@@ -439,7 +443,9 @@ struct StepEditorSheet: View {
                         Text("Temperature")
                         Spacer()
                         TextField("°C", value: $temperature, format: .number)
+                            #if os(iOS)
                             .keyboardType(.decimalPad)
+                            #endif
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
                         Text("°C")
@@ -451,7 +457,9 @@ struct StepEditorSheet: View {
                             Text("Pressure")
                             Spacer()
                             TextField("bar", value: $pressure, format: .number)
+                                #if os(iOS)
                                 .keyboardType(.decimalPad)
+                                #endif
                                 .multilineTextAlignment(.trailing)
                                 .frame(width: 60)
                             Text("bar")
@@ -468,7 +476,9 @@ struct StepEditorSheet: View {
                             Text("Flow Rate")
                             Spacer()
                             TextField("ml/s", value: $flow, format: .number)
+                                #if os(iOS)
                                 .keyboardType(.decimalPad)
+                                #endif
                                 .multilineTextAlignment(.trailing)
                                 .frame(width: 60)
                             Text("ml/s")
@@ -498,7 +508,9 @@ struct StepEditorSheet: View {
                         Text("Value")
                         Spacer()
                         TextField("", value: $exitValue, format: .number)
+                            #if os(iOS)
                             .keyboardType(.decimalPad)
+                            #endif
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
                         Text(exitUnit)
