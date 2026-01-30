@@ -6,6 +6,7 @@
 //
 
 import Foundation
+#if canImport(WatchConnectivity)
 import WatchConnectivity
 
 @MainActor
@@ -130,3 +131,4 @@ extension iOSWatchConnectivityService: WCSessionDelegate {
         }
     }
 }
+#endif

@@ -228,7 +228,6 @@ class BluetoothService: NSObject, ObservableObject {
 
         // Determine control mode
         let isFlowControl = step.flow > 0
-        let isPressureControl = step.pressure > 0 && step.flow == 0
         let isSteepStep = step.pressure == 0 && step.flow == 0
 
         // Byte 1: Flags
