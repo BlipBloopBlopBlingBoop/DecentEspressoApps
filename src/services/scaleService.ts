@@ -549,7 +549,7 @@ class ScaleService {
     if (!data) return
 
     try {
-      await this.commandCharacteristic.writeValue(data)
+      await this.commandCharacteristic.writeValue(data.buffer as ArrayBuffer)
       console.log('[ScaleService] Command sent:', command)
     } catch (error) {
       console.error('[ScaleService] Failed to send command:', error)

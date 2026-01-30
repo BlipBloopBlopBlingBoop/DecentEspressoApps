@@ -72,6 +72,8 @@ export interface ShotProfile {
   name: string
   description?: string
   author?: string
+  notes?: string
+  coffeeType?: string
   createdAt: number
   updatedAt: number
   steps: ProfileStep[]

@@ -95,8 +95,8 @@ class ProfileService {
         seconds: step.exit.type === 'time' ? step.exit.value : 0,
         weight: step.exit.type === 'weight' ? step.exit.value : undefined,
         transition: step.transition === 'smooth' ? 'linear' : 'instant',
-        limiter_value: step.limiterValue,
-        limiter_range: step.limiterRange,
+        limiter_value: step.limiter?.value,
+        limiter_range: step.limiter?.range,
         exit_type: step.exit.type,
         exit_value: step.exit.value,
       })),
@@ -225,8 +225,6 @@ class ProfileService {
       author: data.author || 'Unknown',
       createdAt: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
       updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now(),
-      favorite: false,
-      usageCount: 0,
       targetWeight: data.target_weight || 36,
       coffeeType: data.beverage_type,
       notes: data.notes,
@@ -259,8 +257,10 @@ class ProfileService {
         type: exitType,
         value: exitValue,
       },
-      limiterValue: step.limiter_value,
-      limiterRange: step.limiter_range,
+      limiter: step.limiter_value !== undefined ? {
+        value: step.limiter_value,
+        range: step.limiter_range ?? 0,
+      } : undefined,
     }
   }
 
@@ -277,8 +277,6 @@ class ProfileService {
       author: data.author || 'Unknown',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      favorite: false,
-      usageCount: 0,
       targetWeight: data.target_weight || 36,
       coffeeType: data.beverage_type,
       notes: data.notes,
@@ -303,7 +301,7 @@ class ProfileService {
       temperature: step.temperature || 93,
       pressure: step.pressure || 0,
       flow: step.flow || 0,
-      transition: step.transition || 'smooth',
+      transition: step.transition === 'fast' ? 'fast' : 'smooth',
       exit: {
         type: exitType,
         value: exitValue,
