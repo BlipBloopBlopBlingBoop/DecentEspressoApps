@@ -26,6 +26,35 @@ extension Color {
     #endif
 }
 
+// MARK: - Cross-Platform onChange (iOS 16 compat + macOS 14 deprecation)
+extension View {
+    @ViewBuilder
+    func onChangeCompat<V: Equatable>(of value: V, perform action: @escaping () -> Void) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            self.onChange(of: value) { _, _ in
+                action()
+            }
+        } else {
+            self.onChange(of: value) { _ in
+                action()
+            }
+        }
+    }
+
+    @ViewBuilder
+    func onChangeCompat<V: Equatable>(of value: V, perform action: @escaping (V) -> Void) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            self.onChange(of: value) { _, newValue in
+                action(newValue)
+            }
+        } else {
+            self.onChange(of: value) { newValue in
+                action(newValue)
+            }
+        }
+    }
+}
+
 // MARK: - Cross-Platform Navigation
 extension View {
     @ViewBuilder
