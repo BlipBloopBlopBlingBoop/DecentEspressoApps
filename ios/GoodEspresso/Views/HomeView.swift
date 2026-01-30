@@ -36,7 +36,7 @@ struct HomeView: View {
                     .padding()
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.systemGroupedBg)
             .navigationTitle("Good Espresso")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -134,7 +134,7 @@ struct iPadExtendedControlsCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -148,7 +148,7 @@ struct iPadExtendedControlsCard: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color(.tertiarySystemGroupedBackground))
+            .background(Color.tertiarySystemGroupedBg)
             .foregroundStyle(color)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
@@ -197,7 +197,7 @@ struct ConnectionStatusCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -240,7 +240,7 @@ struct MachineStatusCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -402,7 +402,7 @@ struct QuickControlsCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -424,7 +424,7 @@ struct ControlButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(isActive ? color : Color(.tertiarySystemGroupedBackground))
+            .background(isActive ? color : Color.tertiarySystemGroupedBg)
             .foregroundStyle(isActive ? .white : color)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
@@ -471,7 +471,7 @@ struct ActiveProfileCard: View {
                     }
                 }
                 .padding()
-                .background(Color(.tertiarySystemGroupedBackground))
+                .background(Color.tertiarySystemGroupedBg)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 Text("No profile selected")
@@ -479,7 +479,7 @@ struct ActiveProfileCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -547,7 +547,7 @@ struct ShotChartCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -578,7 +578,7 @@ struct NotConnectedCard: View {
             .padding(.top)
         }
         .padding(24)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

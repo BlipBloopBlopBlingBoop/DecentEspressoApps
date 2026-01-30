@@ -43,7 +43,7 @@ struct ControlView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.systemGroupedBg)
             .navigationTitle("Control")
             .sheet(isPresented: $showingProfileSheet) {
                 ProfilesView()
@@ -71,7 +71,7 @@ struct NotConnectedBanner: View {
         }
         .frame(maxWidth: .infinity)
         .padding(40)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -128,7 +128,7 @@ struct LiveStatusDisplay: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -266,7 +266,7 @@ struct MainControlButtons: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -289,7 +289,7 @@ struct SecondaryControlButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(isActive ? color : Color(.tertiarySystemGroupedBackground))
+            .background(isActive ? color : Color.tertiarySystemGroupedBg)
             .foregroundStyle(isActive ? .white : color)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -334,7 +334,7 @@ struct ActiveProfileSection: View {
                     Spacer()
                 }
                 .padding()
-                .background(Color(.tertiarySystemGroupedBackground))
+                .background(Color.tertiarySystemGroupedBg)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 Button {
@@ -347,7 +347,7 @@ struct ActiveProfileSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -379,7 +379,7 @@ struct LiveExtractionSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -414,7 +414,7 @@ struct TemperatureGaugeSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -519,7 +519,7 @@ struct ExtractionChartSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -601,7 +601,7 @@ struct AdvancedControlsSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -623,7 +623,7 @@ struct MachineControlButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color(.tertiarySystemGroupedBackground))
+            .background(Color.tertiarySystemGroupedBg)
             .foregroundStyle(color)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -685,7 +685,7 @@ struct MachineSettingsSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onAppear {
             targetTemp = machineStore.machineState.temperature.target

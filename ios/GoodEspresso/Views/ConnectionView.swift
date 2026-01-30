@@ -220,7 +220,7 @@ struct DeviceRow: View {
                     .foregroundStyle(.secondary)
             }
             .padding()
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(Color.secondarySystemGroupedBg)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -261,7 +261,7 @@ struct TroubleshootingSection: View {
             }
         }
         .padding()
-        .background(Color(.tertiarySystemGroupedBackground))
+        .background(Color.tertiarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

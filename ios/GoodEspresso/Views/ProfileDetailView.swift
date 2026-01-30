@@ -66,13 +66,13 @@ struct ProfileDetailView: View {
                         .buttonStyle(.bordered)
                     }
                     .padding()
-                    .background(Color(.secondarySystemGroupedBackground))
+                    .background(Color.secondarySystemGroupedBg)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.systemGroupedBg)
         .navigationTitle(recipe.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -115,11 +115,13 @@ struct ProfileDetailView: View {
         .sheet(isPresented: $showingEditor) {
             ProfileEditorView(existingRecipe: recipe)
         }
+        #if canImport(UIKit)
         .sheet(isPresented: $showingShareSheet) {
             if let url = exportURL {
                 ShareSheet(items: [url])
             }
         }
+        #endif
         .alert("Delete Profile?", isPresented: $showingDeleteConfirm) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -141,6 +143,7 @@ struct ProfileDetailView: View {
 
 // MARK: - Share Sheet
 
+#if canImport(UIKit)
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
@@ -150,6 +153,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+#endif
 
 // MARK: - Profile Header
 struct ProfileHeader: View {
@@ -188,7 +192,7 @@ struct ProfileHeader: View {
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -261,7 +265,7 @@ struct ProfileVisualization: View {
             }
             .frame(height: 120)
             .padding()
-            .background(Color(.tertiarySystemGroupedBackground))
+            .background(Color.tertiarySystemGroupedBg)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             // Legend
@@ -273,12 +277,17 @@ struct ProfileVisualization: View {
             .font(.caption)
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     var barWidth: CGFloat {
-        max(20, (UIScreen.main.bounds.width - 80) / CGFloat(steps.count) - 4)
+        #if canImport(UIKit)
+        let screenWidth = UIScreen.main.bounds.width
+        #else
+        let screenWidth: CGFloat = 390
+        #endif
+        return max(20, (screenWidth - 80) / CGFloat(steps.count) - 4)
     }
 
     func barHeight(for step: ProfileStep) -> CGFloat {
@@ -327,7 +336,7 @@ struct StepsSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -415,7 +424,7 @@ struct NotesSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -447,7 +456,7 @@ struct MetadataSection: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
