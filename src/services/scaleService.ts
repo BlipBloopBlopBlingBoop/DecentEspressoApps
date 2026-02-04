@@ -434,12 +434,24 @@ class ScaleService {
   }
 
   private parseBookooWeight(data: DataView): { weight: number; isStable: boolean } {
-    if (data.byteLength < 4) return { weight: 0, isStable: false }
+    // BOOKOO Ultra protocol on FFF4 characteristic:
+    // Byte 0: Message type header (0x03 = weight data)
+    // Byte 1: Sign (0x00 = positive, 0x01 = negative)
+    // Byte 2-3: Weight as 16-bit little-endian in 0.1g units
+    // Byte 4: Unit indicator
+    // Byte 5: Stability flags
+    if (data.byteLength < 6) return { weight: 0, isStable: false }
 
-    const sign = (data.getUint8(0) & 0x01) === 0 ? 1 : -1
-    const weightRaw = (data.getUint8(1) << 8) | data.getUint8(2)
+    // Only parse weight notifications (header 0x03)
+    if (data.getUint8(0) !== 0x03) {
+      const store = useScaleStore.getState()
+      return { weight: store.data.weight, isStable: store.data.isStable }
+    }
+
+    const sign = data.getUint8(1) === 0x00 ? 1 : -1
+    const weightRaw = data.getUint16(2, true) // little-endian
     const weight = sign * (weightRaw / 10)
-    const isStable = (data.getUint8(3) & 0x02) !== 0
+    const isStable = (data.getUint8(5) & 0x01) !== 0
 
     return { weight, isStable }
   }

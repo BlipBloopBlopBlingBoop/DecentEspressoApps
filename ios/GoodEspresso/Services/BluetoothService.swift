@@ -45,23 +45,34 @@ class BluetoothService: NSObject, ObservableObject {
 
         discoveredDevices.removeAll()
         isScanning = true
-        print("[BluetoothService] Starting scan for Decent machines...")
+        print("[BluetoothService] Starting targeted scan for Decent service UUID...")
 
-        // Scan without service filter to find all nearby BLE devices
-        // Then filter by name prefix "DE1" in the delegate
-        // This is more reliable as some machines may not advertise the service UUID
+        // Phase 1: Scan with Decent service UUID for targeted discovery
+        // This is more reliable than nil on many platforms because the system
+        // can filter at the radio level
         centralManager.scanForPeripherals(
-            withServices: nil,
+            withServices: [DecentUUIDs.serviceUUID],
             options: [
                 CBCentralManagerScanOptionAllowDuplicatesKey: false
             ]
         )
 
-        // Stop scanning after 15 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+        // Phase 2: After 5 seconds, if nothing found, broaden to all devices
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self = self, self.isScanning, self.discoveredDevices.isEmpty else { return }
+            print("[BluetoothService] No devices found with service filter, broadening scan to all BLE devices...")
+            self.centralManager.stopScan()
+            self.centralManager.scanForPeripherals(
+                withServices: nil,
+                options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+            )
+        }
+
+        // Stop scanning after 30 seconds total
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
             if self?.isScanning == true {
                 self?.stopScanning()
-                print("[BluetoothService] Scan timeout - stopped")
+                print("[BluetoothService] Scan timeout - stopped after 30s")
             }
         }
     }
@@ -465,12 +476,9 @@ extension BluetoothService: CBCentralManagerDelegate {
             let advertisedServices = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
             let hasDecentService = advertisedServices.contains(DecentUUIDs.serviceUUID)
 
-            // Only show Decent-adjacent devices:
-            // - Name starts with "DE1" (standard Decent naming)
-            // - Name contains "decent"
-            // - Name is "nRF5x" (Decent uses Nordic chips, sometimes advertises this way)
-            // - Device advertises Decent service UUID
-            guard let deviceName = name else { return }
+            // Accept device if it has the Decent service UUID even without a name
+            let deviceName = name ?? (hasDecentService ? "Decent Machine" : nil)
+            guard let deviceName = deviceName else { return }
 
             let isDecentDevice = deviceName.hasPrefix("DE1") ||
                                  deviceName.lowercased().contains("decent") ||
@@ -478,7 +486,7 @@ extension BluetoothService: CBCentralManagerDelegate {
                                  hasDecentService
 
             if isDecentDevice {
-                print("[BluetoothService] ✓ Found Decent machine: \(deviceName) (RSSI: \(RSSI))")
+                print("[BluetoothService] ✓ Found Decent machine: \(deviceName) (RSSI: \(RSSI), services: \(advertisedServices.map { $0.uuidString.prefix(8) }))")
 
                 if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
                     discoveredDevices.append(peripheral)
@@ -490,7 +498,9 @@ extension BluetoothService: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
             print("[BluetoothService] Connected to: \(peripheral.name ?? "Unknown")")
-            peripheral.discoverServices([DecentUUIDs.serviceUUID])
+            // Discover all services — some machines may not expose the Decent
+            // service UUID until after a full service discovery
+            peripheral.discoverServices(nil)
         }
     }
 
@@ -503,7 +513,16 @@ extension BluetoothService: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
             print("[BluetoothService] Disconnected from: \(peripheral.name ?? "Unknown")")
-            machineStore?.reset()
+
+            // If disconnection was unexpected (error != nil), attempt to reconnect
+            if error != nil && self.connectedPeripheral != nil {
+                print("[BluetoothService] Unexpected disconnect — attempting reconnect...")
+                self.centralManager.connect(peripheral, options: nil)
+            } else {
+                self.connectedPeripheral = nil
+                self.characteristics.removeAll()
+                machineStore?.reset()
+            }
         }
     }
 }
@@ -539,9 +558,11 @@ extension BluetoothService: CBPeripheralDelegate {
             for characteristic in characteristics {
                 self.characteristics[characteristic.uuid] = characteristic
 
-                // Subscribe to notifications
+                // Subscribe to notifications for real-time data
                 if characteristic.uuid == DecentUUIDs.shotSample ||
-                   characteristic.uuid == DecentUUIDs.stateInfo {
+                   characteristic.uuid == DecentUUIDs.stateInfo ||
+                   characteristic.uuid == DecentUUIDs.temperatures ||
+                   characteristic.uuid == DecentUUIDs.waterLevels {
                     peripheral.setNotifyValue(true, for: characteristic)
                 }
             }

@@ -394,14 +394,23 @@ class ScaleService: NSObject, ObservableObject {
     }
 
     private func parseBookooWeight(_ data: Data) -> (Double, Bool) {
-        guard data.count >= 4 else { return (0, false) }
+        // BOOKOO Ultra protocol on FFF4 characteristic:
+        // Byte 0: Message type header (0x03 = weight data)
+        // Byte 1: Sign (0x00 = positive, 0x01 = negative)
+        // Byte 2: Weight low byte  (little-endian)
+        // Byte 3: Weight high byte (little-endian)
+        // Byte 4: Unit indicator
+        // Byte 5: Stability flags
+        guard data.count >= 6 else { return (0, false) }
 
-        // Bookoo format: [sign][weight_high][weight_low][status]
-        // Weight is in 0.1g units
-        let sign: Double = (data[0] & 0x01) == 0 ? 1.0 : -1.0
-        let weightRaw = Int(data[1]) << 8 | Int(data[2])
+        // Only parse weight notifications (header 0x03);
+        // ignore battery, timer, and other notification types
+        guard data[0] == 0x03 else { return (scaleData.weight, scaleData.isStable) }
+
+        let sign: Double = data[1] == 0x00 ? 1.0 : -1.0
+        let weightRaw = UInt16(data[2]) | (UInt16(data[3]) << 8)  // Little-endian
         let weight = sign * Double(weightRaw) / 10.0
-        let isStable = (data[3] & 0x02) != 0
+        let isStable = (data[5] & 0x01) != 0
 
         return (weight, isStable)
     }
