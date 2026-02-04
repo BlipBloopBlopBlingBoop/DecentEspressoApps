@@ -490,7 +490,9 @@ extension BluetoothService: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
             print("[BluetoothService] Connected to: \(peripheral.name ?? "Unknown")")
-            peripheral.discoverServices([DecentUUIDs.serviceUUID])
+            // Discover all services — some machines may not expose the Decent
+            // service UUID until after a full service discovery
+            peripheral.discoverServices(nil)
         }
     }
 
@@ -503,7 +505,16 @@ extension BluetoothService: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
             print("[BluetoothService] Disconnected from: \(peripheral.name ?? "Unknown")")
-            machineStore?.reset()
+
+            // If disconnection was unexpected (error != nil), attempt to reconnect
+            if error != nil && self.connectedPeripheral != nil {
+                print("[BluetoothService] Unexpected disconnect — attempting reconnect...")
+                self.centralManager.connect(peripheral, options: nil)
+            } else {
+                self.connectedPeripheral = nil
+                self.characteristics.removeAll()
+                machineStore?.reset()
+            }
         }
     }
 }
@@ -539,9 +550,11 @@ extension BluetoothService: CBPeripheralDelegate {
             for characteristic in characteristics {
                 self.characteristics[characteristic.uuid] = characteristic
 
-                // Subscribe to notifications
+                // Subscribe to notifications for real-time data
                 if characteristic.uuid == DecentUUIDs.shotSample ||
-                   characteristic.uuid == DecentUUIDs.stateInfo {
+                   characteristic.uuid == DecentUUIDs.stateInfo ||
+                   characteristic.uuid == DecentUUIDs.temperatures ||
+                   characteristic.uuid == DecentUUIDs.waterLevels {
                     peripheral.setNotifyValue(true, for: characteristic)
                 }
             }
