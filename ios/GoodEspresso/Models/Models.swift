@@ -9,21 +9,59 @@ import Foundation
 import CoreBluetooth
 import SwiftUI
 
+// MARK: - Navigation Tab
+enum NavigationTab: String, CaseIterable, Hashable, Identifiable {
+    case home = "Home"
+    case profiles = "Profiles"
+    case control = "Control"
+    case history = "History"
+    case settings = "Settings"
+
+    var id: String { rawValue }
+
+    var label: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .home: return "house.fill"
+        case .profiles: return "list.bullet.rectangle.portrait.fill"
+        case .control: return "dial.medium.fill"
+        case .history: return "clock.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
+}
+
 // MARK: - Cross-Platform Colors
 extension Color {
     #if canImport(UIKit)
     static let systemGroupedBg = Color(.systemGroupedBackground)
     static let secondarySystemGroupedBg = Color(.secondarySystemGroupedBackground)
     static let tertiarySystemGroupedBg = Color(.tertiarySystemGroupedBackground)
+    static let systemBg = Color(uiColor: .systemBackground)
     #elseif canImport(AppKit)
     static let systemGroupedBg = Color(nsColor: .windowBackgroundColor)
     static let secondarySystemGroupedBg = Color(nsColor: .controlBackgroundColor)
     static let tertiarySystemGroupedBg = Color(nsColor: .underPageBackgroundColor)
+    static let systemBg = Color(nsColor: .windowBackgroundColor)
     #else
     static let systemGroupedBg = Color(white: 0.0)
     static let secondarySystemGroupedBg = Color(white: 0.11)
     static let tertiarySystemGroupedBg = Color(white: 0.17)
+    static let systemBg = Color(white: 0.0)
     #endif
+}
+
+// MARK: - Cross-Platform List Style
+extension View {
+    @ViewBuilder
+    func insetGroupedListStyleCompat() -> some View {
+        #if os(iOS)
+        self.listStyle(.insetGrouped)
+        #else
+        self.listStyle(.sidebar)
+        #endif
+    }
 }
 
 // MARK: - Cross-Platform onChange (iOS 16 compat + macOS 14 deprecation)

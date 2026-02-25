@@ -2,7 +2,9 @@
 //  ContentView.swift
 //  Good Espresso
 //
-//  Main navigation container with tab bar
+//  Main navigation container with adaptive layout:
+//  - iPhone: Tab bar navigation
+//  - iPad/macOS: Sidebar navigation via NavigationSplitView
 //
 
 import SwiftUI
@@ -10,50 +12,79 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var machineStore: MachineStore
     @EnvironmentObject var bluetoothService: BluetoothService
-    @State private var selectedTab = 0
+    @State private var selectedTab: NavigationTab = .home
     @State private var showingLegal = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
-                .tag(0)
-
-            ProfilesView()
-                .tabItem {
-                    Label("Profiles", systemImage: "list.bullet.rectangle.portrait.fill")
-                }
-                .tag(1)
-
-            ControlView()
-                .tabItem {
-                    Label("Control", systemImage: "dial.medium.fill")
-                }
-                .tag(2)
-
-            HistoryView()
-                .tabItem {
-                    Label("History", systemImage: "clock.fill")
-                }
-                .tag(3)
-
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape.fill")
-                }
-                .tag(4)
+        Group {
+            if horizontalSizeClass == .compact {
+                compactNavigation
+            } else {
+                regularNavigation
+            }
         }
         .tint(.orange)
         .onAppear {
-            // Check if first launch to show legal disclaimer
             if !UserDefaults.standard.bool(forKey: "hasAcceptedLegal") {
                 showingLegal = true
             }
         }
         .sheet(isPresented: $showingLegal) {
             LegalView(isPresented: $showingLegal)
+        }
+    }
+
+    // MARK: - iPhone: Tab Bar
+
+    var compactNavigation: some View {
+        TabView(selection: $selectedTab) {
+            ForEach(NavigationTab.allCases) { tab in
+                tabDestination(for: tab)
+                    .tabItem {
+                        Label(tab.label, systemImage: tab.systemImage)
+                    }
+                    .tag(tab)
+            }
+        }
+    }
+
+    // MARK: - iPad / macOS: Sidebar
+
+    var regularNavigation: some View {
+        NavigationSplitView {
+            List(selection: $selectedTab) {
+                ForEach(NavigationTab.allCases) { tab in
+                    Label(tab.label, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+            }
+            .navigationTitle("Good Espresso")
+            #if os(iOS)
+            .listStyle(.insetGrouped)
+            #else
+            .listStyle(.sidebar)
+            #endif
+        } detail: {
+            tabDestination(for: selectedTab)
+        }
+    }
+
+    // MARK: - Tab Destination
+
+    @ViewBuilder
+    func tabDestination(for tab: NavigationTab) -> some View {
+        switch tab {
+        case .home:
+            HomeView()
+        case .profiles:
+            ProfilesView()
+        case .control:
+            ControlView()
+        case .history:
+            HistoryView()
+        case .settings:
+            SettingsView()
         }
     }
 }
