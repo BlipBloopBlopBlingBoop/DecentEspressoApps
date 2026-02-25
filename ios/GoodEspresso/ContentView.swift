@@ -12,7 +12,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var machineStore: MachineStore
     @EnvironmentObject var bluetoothService: BluetoothService
-    @State private var selectedTab: NavigationTab = .home
+    @State private var selectedTab: NavigationTab? = .home
     @State private var showingLegal = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -37,8 +37,15 @@ struct ContentView: View {
 
     // MARK: - iPhone: Tab Bar
 
+    private var tabBinding: Binding<NavigationTab> {
+        Binding(
+            get: { selectedTab ?? .home },
+            set: { selectedTab = $0 }
+        )
+    }
+
     var compactNavigation: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: tabBinding) {
             ForEach(NavigationTab.allCases) { tab in
                 tabDestination(for: tab)
                     .tabItem {
@@ -60,14 +67,11 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Good Espresso")
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
             .listStyle(.sidebar)
-            #endif
         } detail: {
-            tabDestination(for: selectedTab)
+            tabDestination(for: selectedTab ?? .home)
         }
+        .frame(minWidth: 600, minHeight: 400)
     }
 
     // MARK: - Tab Destination

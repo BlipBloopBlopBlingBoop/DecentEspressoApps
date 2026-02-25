@@ -42,6 +42,8 @@ struct ControlView: View {
                     }
                 }
                 .padding()
+                .frame(maxWidth: 700)
+                .frame(maxWidth: .infinity)
             }
             .background(Color.systemGroupedBg)
             .navigationTitle("Control")

@@ -27,8 +27,11 @@ Watch pressure, flow, and temperature in real-time with beautiful live charts. T
 • Professional Profiles
 Choose from 11 expertly crafted espresso profiles and 6 pulse-brew tea profiles. From classic E61 to modern turbo shots, find the perfect profile for your beans.
 
+• Easy Profile Editing
+Edit any profile with a tap. Duplicate & customize built-in profiles or create your own from scratch with the step-by-step editor.
+
 • Pulse-Brew Tea
-Experience traditional gongfu-style tea brewing with our innovative pulse profiles. The basket fills, pressure opens the valve, then alternating steep and pulse cycles extract maximum flavor.
+Experience traditional gongfu-style tea brewing with innovative pulse profiles. The basket fills, pressure opens the valve, then alternating steep and pulse cycles extract maximum flavor.
 
 • Shot History
 Review past extractions with detailed charts and data. Rate your shots and track your progress over time.
@@ -36,22 +39,40 @@ Review past extractions with detailed charts and data. Rate your shots and track
 • Complete Machine Control
 Access all machine functions including espresso, steam, flush, hot water, sleep, wake, clean, and descale modes.
 
-• Landscape Support
-View detailed extraction charts in landscape mode for the best analysis experience.
+• Native Mac & iPad Support
+Enjoy a full sidebar navigation layout on iPad and Mac with content that scales beautifully to any window size.
 
 IMPORTANT NOTICE:
 Good Espresso is an independent, open-source application. It is NOT affiliated with, endorsed by, or officially connected to Decent Espresso. Use at your own risk.
 
 REQUIREMENTS:
 • Decent espresso machine (DE1, DE1+, DE1PRO, or DE1XL)
-• iPhone with Bluetooth LE support
+• iPhone, iPad, or Mac with Bluetooth LE support
 • iOS 16.0 or later
 ```
 
 ### Keywords
 
 ```
-espresso, coffee, decent, brewing, barista, extraction, pressure, profiling, tea, gongfu
+espresso, coffee, decent, brewing, barista, extraction, pressure, profiling, tea, macOS
+```
+
+### What's New (Version 1.1)
+
+```
+NEW IN 1.1:
+
+• Mac Catalyst & iPad Sidebar
+Full NavigationSplitView sidebar on iPad and Mac. No more tab bar on wide screens — switch between Home, Profiles, Control, History, and Settings from a proper sidebar.
+
+• Easy Profile Editing
+Edit button is now front and center on every profile. Custom profiles get a direct "Edit Profile" button; built-in profiles get "Duplicate & Edit" to create your own version in one tap.
+
+• Improved macOS Layout
+Content no longer stretches across ultra-wide windows. Cards and controls cap at sensible widths, the sidebar column is resizable, and the profile visualization adapts to your window size.
+
+• Cross-Platform Fixes
+Resolved compatibility issues with List selection, list styles, and system colors across iOS, iPadOS, and macOS.
 ```
 
 ### What's New (Version 1.0)
@@ -86,7 +107,7 @@ https://github.com/goodespresso/app/blob/main/PRIVACY.md
 1. **Home Screen** - Connected state showing machine status and chart
 2. **Control Screen** - Live extraction with real-time chart
 3. **Profiles Screen** - List of espresso and tea profiles
-4. **Profile Detail** - Detailed view of a profile with steps
+4. **Profile Detail** - Detailed view of a profile with Edit button visible
 5. **History Screen** - Shot history with ratings
 
 ### iPhone 6.5" Display (iPhone 14 Plus)
@@ -96,7 +117,14 @@ https://github.com/goodespresso/app/blob/main/PRIVACY.md
 - Same 5 screenshots
 
 ### iPad Pro 12.9" (6th gen)
-- Same 5 screenshots (landscape recommended)
+1. **Home Screen** - Sidebar + two-column dashboard layout
+2. **Control Screen** - Sidebar + centered control panel
+3. **Profiles Screen** - Sidebar + profile list with search
+4. **Profile Detail** - Sidebar + profile detail with Edit button
+5. **Settings Screen** - Sidebar + settings list
+
+### Mac (via Mac Catalyst)
+- Same 5 screenshots as iPad, captured in a Mac window
 
 ---
 
@@ -111,10 +139,12 @@ Not applicable - app uses Bluetooth to connect to physical hardware.
 This app requires a Decent espresso machine to demonstrate full functionality. The app will show a "Not Connected" state without the physical machine.
 
 Key features that can be reviewed without hardware:
-1. Profile browsing (Profiles tab)
-2. Legal disclaimers (shown on first launch)
-3. Settings and preferences
-4. App navigation and UI
+1. Profile browsing and editing (Profiles tab)
+2. Duplicate & Edit flow on any profile
+3. Legal disclaimers (shown on first launch)
+4. Settings and preferences
+5. App navigation: tab bar on iPhone, sidebar on iPad/Mac
+6. Window resizing behavior on Mac
 
 The app is an open-source community project for controlling Decent espresso machines via Bluetooth. It does not collect any user data and stores all information locally on the device.
 ```
@@ -142,6 +172,7 @@ Capture on:
 - iPhone 14 Plus (6.5")
 - iPhone 8 Plus (5.5")
 - iPad Pro 12.9"
+- Mac (via Catalyst)
 
 ---
 
@@ -152,7 +183,7 @@ Create a file at `PRIVACY.md`:
 ```markdown
 # Privacy Policy for Good Espresso
 
-Last updated: [Date]
+Last updated: February 2026
 
 ## Overview
 
@@ -207,17 +238,21 @@ For questions about this privacy policy, please open an issue on our GitHub repo
 ## Submission Checklist
 
 - [ ] App icon (1024x1024 PNG, no alpha)
-- [ ] Screenshots for all required device sizes
-- [ ] App description completed
-- [ ] Keywords added (max 100 characters)
+- [ ] Screenshots for all required device sizes (including iPad sidebar layout)
+- [ ] Mac Catalyst screenshots showing sidebar navigation
+- [ ] App description updated for v1.1
+- [ ] What's New text updated for v1.1
+- [ ] Keywords updated
 - [ ] Support URL active
 - [ ] Privacy Policy URL active
+- [ ] Privacy manifest (PrivacyInfo.xcprivacy) included
 - [ ] Age rating questionnaire completed
 - [ ] Pricing set (Free)
 - [ ] Availability (all countries or specific)
 - [ ] Build uploaded via Xcode/Transporter
 - [ ] Export compliance answered (No encryption = exempt)
 - [ ] Content rights declared
+- [ ] Version set to 1.1.0, build 2
 
 ---
 
@@ -233,13 +268,12 @@ When asked about encryption:
 ## Build & Upload Process
 
 1. **In Xcode:**
-   - Set version number (1.0)
-   - Set build number (1)
+   - Verify version 1.1.0, build 2
    - Select "Any iOS Device (arm64)"
-   - Product → Archive
+   - Product > Archive
 
 2. **After Archive:**
-   - Window → Organizer
+   - Window > Organizer
    - Select the archive
    - Click "Distribute App"
    - Select "App Store Connect"
@@ -248,7 +282,8 @@ When asked about encryption:
 3. **In App Store Connect:**
    - Wait for build processing (5-30 minutes)
    - Select build for submission
-   - Complete all metadata
+   - Update "What's New" text for v1.1
+   - Update description if needed
    - Submit for review
 
 ---
@@ -261,3 +296,4 @@ When asked about encryption:
 4. **Bluetooth Without Purpose** - Clearly explain why Bluetooth is needed
 5. **Third-Party Trademarks** - Don't use "Decent" in app name/icon
 6. **Guideline 4.2 (Minimum Functionality)** - App has substantial features
+7. **Missing Privacy Manifest** - Include PrivacyInfo.xcprivacy for iOS 17+

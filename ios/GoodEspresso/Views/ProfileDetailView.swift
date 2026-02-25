@@ -18,6 +18,7 @@ struct ProfileDetailView: View {
     @State private var showingShareSheet = false
     @State private var exportURL: URL?
     @State private var showingDeleteConfirm = false
+    @State private var editableCopy: Recipe?
 
     var isActive: Bool {
         machineStore.activeRecipe?.id == recipe.id
@@ -40,6 +41,27 @@ struct ProfileDetailView: View {
                 // Action Buttons
                 ActionButtons(recipe: recipe, isActive: isActive)
 
+                // Edit / Duplicate & Edit - prominent, always visible
+                if isCustom {
+                    Button {
+                        showingEditor = true
+                    } label: {
+                        Label("Edit Profile", systemImage: "pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                } else {
+                    Button {
+                        duplicateAndEdit()
+                    } label: {
+                        Label("Duplicate & Edit", systemImage: "doc.on.doc")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                }
+
                 // Profile Visualization
                 ProfileVisualization(steps: recipe.steps)
 
@@ -54,37 +76,40 @@ struct ProfileDetailView: View {
                 // Metadata
                 MetadataSection(recipe: recipe)
 
-                // Export/Delete for custom profiles
+                // Delete for custom profiles
                 if isCustom {
-                    VStack(spacing: 12) {
-                        Button(role: .destructive) {
-                            showingDeleteConfirm = true
-                        } label: {
-                            Label("Delete Profile", systemImage: "trash")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
+                    Button(role: .destructive) {
+                        showingDeleteConfirm = true
+                    } label: {
+                        Label("Delete Profile", systemImage: "trash")
+                            .frame(maxWidth: .infinity)
                     }
-                    .padding()
-                    .background(Color.secondarySystemGroupedBg)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .buttonStyle(.bordered)
                 }
             }
             .padding()
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
         }
         .background(Color.systemGroupedBg)
         .navigationTitle(recipe.name)
         .inlineNavigationBarTitle()
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailingCompat) {
-                // Export button
+                if isCustom {
+                    Button {
+                        showingEditor = true
+                    } label: {
+                        Image(systemName: "pencil.circle")
+                    }
+                }
+
                 Button {
                     exportProfile()
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
 
-                // Duplicate button
                 Menu {
                     Button {
                         let copy = machineStore.duplicateProfile(recipe)
@@ -93,11 +118,19 @@ struct ProfileDetailView: View {
                         Label("Duplicate", systemImage: "doc.on.doc")
                     }
 
+                    Button {
+                        duplicateAndEdit()
+                    } label: {
+                        Label("Duplicate & Edit", systemImage: "pencil.and.list.clipboard")
+                    }
+
                     if isCustom {
-                        Button {
-                            showingEditor = true
+                        Divider()
+
+                        Button(role: .destructive) {
+                            showingDeleteConfirm = true
                         } label: {
-                            Label("Edit", systemImage: "pencil")
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                 } label: {
@@ -113,7 +146,7 @@ struct ProfileDetailView: View {
             }
         }
         .sheet(isPresented: $showingEditor) {
-            ProfileEditorView(existingRecipe: recipe)
+            ProfileEditorView(existingRecipe: isCustom ? recipe : editableCopy)
         }
         #if canImport(UIKit)
         .sheet(isPresented: $showingShareSheet) {
@@ -138,6 +171,13 @@ struct ProfileDetailView: View {
             exportURL = url
             showingShareSheet = true
         }
+    }
+
+    private func duplicateAndEdit() {
+        let copy = machineStore.duplicateProfile(recipe)
+        machineStore.saveCustomProfile(copy)
+        editableCopy = copy
+        showingEditor = true
     }
 }
 
@@ -246,22 +286,25 @@ struct ProfileVisualization: View {
             Text("Profile Curve")
                 .font(.headline)
 
-            // Simple bar chart showing pressure/flow over steps
-            HStack(alignment: .bottom, spacing: 4) {
-                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                    VStack(spacing: 4) {
-                        // Bar representing pressure or flow
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(step.pressure > 0 ? .blue : (step.flow > 0 ? .cyan : .gray))
-                            .frame(width: barWidth, height: barHeight(for: step))
+            GeometryReader { geometry in
+                let availableWidth = geometry.size.width
+                let barW = max(20, (availableWidth - CGFloat(steps.count - 1) * 4) / CGFloat(steps.count))
 
-                        // Step name (abbreviated)
-                        Text(abbreviate(step.name))
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                HStack(alignment: .bottom, spacing: 4) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(step.pressure > 0 ? .blue : (step.flow > 0 ? .cyan : .gray))
+                                .frame(width: barW, height: barHeight(for: step))
+
+                            Text(abbreviate(step.name))
+                                .font(.system(size: 8))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
             .frame(height: 120)
             .padding()
@@ -281,22 +324,13 @@ struct ProfileVisualization: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    var barWidth: CGFloat {
-        #if canImport(UIKit)
-        let screenWidth = UIScreen.main.bounds.width
-        #else
-        let screenWidth: CGFloat = 390
-        #endif
-        return max(20, (screenWidth - 80) / CGFloat(steps.count) - 4)
-    }
-
     func barHeight(for step: ProfileStep) -> CGFloat {
         if step.pressure > 0 {
             return CGFloat(step.pressure / 10.0) * 80 + 10
         } else if step.flow > 0 {
             return CGFloat(step.flow / 6.0) * 80 + 10
         } else {
-            return 10  // Steep step (no flow)
+            return 10
         }
     }
 
