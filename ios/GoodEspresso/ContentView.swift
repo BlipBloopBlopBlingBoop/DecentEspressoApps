@@ -71,6 +71,7 @@ struct ContentView: View {
         } detail: {
             tabDestination(for: selectedTab ?? .home)
         }
+        .frame(minWidth: 600, minHeight: 400)
     }
 
     // MARK: - Tab Destination

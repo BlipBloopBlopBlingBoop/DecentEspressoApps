@@ -66,7 +66,7 @@ struct HomeView: View {
         .padding()
     }
 
-    // MARK: - Regular Layout (iPad)
+    // MARK: - Regular Layout (iPad / macOS)
     var regularLayout: some View {
         VStack(spacing: 20) {
             // Top row: Connection + Status
@@ -89,13 +89,14 @@ struct HomeView: View {
                 // Right column: Controls
                 VStack(spacing: 20) {
                     QuickControlsCard()
-                    // Extra space for additional controls on iPad
                     iPadExtendedControlsCard()
                 }
-                .frame(width: 320)
+                .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
             }
         }
         .padding()
+        .frame(maxWidth: 1100)
+        .frame(maxWidth: .infinity)
     }
 }
 

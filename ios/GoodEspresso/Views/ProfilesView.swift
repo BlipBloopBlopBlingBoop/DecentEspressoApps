@@ -172,6 +172,15 @@ struct ProfileRow: View {
                 Label("Select", systemImage: "checkmark.circle")
             }
             .tint(.green)
+
+            if isCustom {
+                Button {
+                    onEdit?(recipe)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.orange)
+            }
         }
         .swipeActions(edge: .trailing) {
             Button {
@@ -207,6 +216,22 @@ struct ProfileRow: View {
                 Label("Select", systemImage: "checkmark.circle")
             }
 
+            if isCustom {
+                Button {
+                    onEdit?(recipe)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+            }
+
+            Button {
+                let copy = machineStore.duplicateProfile(recipe)
+                machineStore.saveCustomProfile(copy)
+                onEdit?(copy)
+            } label: {
+                Label("Duplicate & Edit", systemImage: "pencil.and.list.clipboard")
+            }
+
             Button {
                 machineStore.toggleFavorite(recipe)
             } label: {
@@ -225,12 +250,6 @@ struct ProfileRow: View {
 
             if isCustom {
                 Divider()
-
-                Button {
-                    onEdit?(recipe)
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
 
                 Button(role: .destructive) {
                     machineStore.deleteCustomProfile(recipe)
