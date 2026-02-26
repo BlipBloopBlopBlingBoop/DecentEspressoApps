@@ -89,6 +89,8 @@ struct ContentView: View {
             HistoryView()
         case .analytics:
             AnalyticsView()
+        case .puckSim:
+            PuckSimulationView()
         case .settings:
             SettingsView()
         }
