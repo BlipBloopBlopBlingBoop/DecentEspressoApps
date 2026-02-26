@@ -31,9 +31,6 @@ struct ControlView: View {
                         // Extraction Chart (always visible)
                         ExtractionChartSection()
 
-                        // Advanced Controls
-                        AdvancedControlsSection()
-
                         // Temperature Gauge
                         TemperatureGaugeSection()
 
@@ -467,6 +464,7 @@ struct TemperatureItem: View {
 // MARK: - Extraction Chart Section (Always Visible)
 struct ExtractionChartSection: View {
     @EnvironmentObject var machineStore: MachineStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var dataPoints: [ShotDataPoint] {
         if let activeShot = machineStore.activeShot, !activeShot.dataPoints.isEmpty {
@@ -479,6 +477,10 @@ struct ExtractionChartSection: View {
 
     var isLive: Bool {
         machineStore.machineState.state == .brewing || machineStore.isRecording
+    }
+
+    private var chartHeight: CGFloat {
+        horizontalSizeClass == .compact ? 220 : 400
     }
 
     var body: some View {
@@ -506,7 +508,7 @@ struct ExtractionChartSection: View {
 
             if !dataPoints.isEmpty {
                 ShotChartView(dataPoints: dataPoints, isLive: isLive)
-                    .frame(height: 200)
+                    .frame(minHeight: chartHeight)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "chart.xyaxis.line")
@@ -516,119 +518,13 @@ struct ExtractionChartSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .frame(height: 200)
+                .frame(height: chartHeight)
                 .frame(maxWidth: .infinity)
             }
         }
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-// MARK: - Advanced Controls Section
-struct AdvancedControlsSection: View {
-    @EnvironmentObject var machineStore: MachineStore
-    @EnvironmentObject var bluetoothService: BluetoothService
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Machine Controls")
-                .font(.headline)
-
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 12) {
-                MachineControlButton(
-                    title: "Sleep",
-                    icon: "moon.fill",
-                    color: .purple
-                ) {
-                    Task {
-                        try? await bluetoothService.sendCommand(.goToSleep)
-                    }
-                }
-
-                MachineControlButton(
-                    title: "Wake",
-                    icon: "sun.max.fill",
-                    color: .yellow
-                ) {
-                    Task {
-                        try? await bluetoothService.sendCommand(.idle)
-                    }
-                }
-
-                MachineControlButton(
-                    title: "Clean",
-                    icon: "sparkles",
-                    color: .mint
-                ) {
-                    Task {
-                        try? await bluetoothService.sendCommand(.clean)
-                    }
-                }
-
-                MachineControlButton(
-                    title: "Descale",
-                    icon: "drop.triangle.fill",
-                    color: .teal
-                ) {
-                    Task {
-                        try? await bluetoothService.sendCommand(.descale)
-                    }
-                }
-
-                MachineControlButton(
-                    title: "Skip Step",
-                    icon: "forward.fill",
-                    color: .indigo
-                ) {
-                    Task {
-                        try? await bluetoothService.sendCommand(.skipToNext)
-                    }
-                }
-
-                MachineControlButton(
-                    title: "Refill",
-                    icon: "arrow.down.to.line",
-                    color: .blue
-                ) {
-                    Task {
-                        try? await bluetoothService.sendCommand(.refill)
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemGroupedBg)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-struct MachineControlButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.title3)
-                Text(title)
-                    .font(.caption2)
-                    .fontWeight(.medium)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Color.tertiarySystemGroupedBg)
-            .foregroundStyle(color)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
     }
 }
 
