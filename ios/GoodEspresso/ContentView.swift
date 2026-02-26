@@ -87,6 +87,8 @@ struct ContentView: View {
             ControlView()
         case .history:
             HistoryView()
+        case .analytics:
+            AnalyticsView()
         case .settings:
             SettingsView()
         }
