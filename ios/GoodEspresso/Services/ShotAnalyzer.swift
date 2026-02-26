@@ -291,3 +291,133 @@ struct TrendAnalysis {
     let averageScore: Int
     let shotCount: Int
 }
+
+// MARK: - Full Dashboard Analytics
+
+struct DashboardAnalytics {
+    let shotAnalyses: [(shot: ShotRecord, analysis: ShotAnalysis)]
+    let scoreHistory: [(date: Date, score: Int)]
+    let scoreDistribution: [Int]  // 10 buckets: 0-9, 10-19, ... 90-100
+    let profilePerformance: [(name: String, avgScore: Int, count: Int)]
+    let durationDistribution: [Int]  // 8 buckets: <15s, 15-20, 20-25, 25-30, 30-35, 35-40, 40-45, >45
+    let channelingRate: Double  // 0-1
+    let avgPressures: [Double]  // per-shot average pressures (most recent first)
+    let avgFlows: [Double]      // per-shot average flows
+    let avgTemps: [Double]      // per-shot average temps
+    let bestShots: [(shot: ShotRecord, score: Int)]
+    let weeklyAverages: [(week: String, score: Int)]
+    let trend: TrendAnalysis
+}
+
+extension ShotAnalyzer {
+
+    /// Full dashboard computation — runs everything on Accelerate-backed vDSP.
+    static func computeDashboard(_ shots: [ShotRecord]) -> DashboardAnalytics {
+        let capped = Array(shots.prefix(100))
+        let pairs: [(shot: ShotRecord, analysis: ShotAnalysis)] = capped.map { ($0, analyze($0)) }
+
+        // Score history (oldest first for chart)
+        let scoreHistory: [(date: Date, score: Int)] = pairs.reversed().map {
+            ($0.shot.startTime, $0.analysis.overallScore)
+        }
+
+        // Score distribution (10 buckets)
+        var scoreDist = [Int](repeating: 0, count: 10)
+        for (_, a) in pairs {
+            let bucket = min(a.overallScore / 10, 9)
+            scoreDist[bucket] += 1
+        }
+
+        // Profile performance
+        var profileMap = [String: (total: Int, count: Int)]()
+        for (s, a) in pairs {
+            let name = s.profileName
+            let existing = profileMap[name] ?? (0, 0)
+            profileMap[name] = (existing.total + a.overallScore, existing.count + 1)
+        }
+        let profilePerf = profileMap.map { (name: $0.key, avgScore: $0.value.total / max($0.value.count, 1), count: $0.value.count) }
+            .sorted { $0.avgScore > $1.avgScore }
+
+        // Duration distribution (8 buckets)
+        var durDist = [Int](repeating: 0, count: 8)
+        for (s, _) in pairs {
+            let d = s.duration
+            let bucket: Int
+            if d < 15 { bucket = 0 }
+            else if d < 20 { bucket = 1 }
+            else if d < 25 { bucket = 2 }
+            else if d < 30 { bucket = 3 }
+            else if d < 35 { bucket = 4 }
+            else if d < 40 { bucket = 5 }
+            else if d < 45 { bucket = 6 }
+            else { bucket = 7 }
+            durDist[bucket] += 1
+        }
+
+        // Channeling rate
+        let channelingCount = pairs.filter { $0.analysis.channelingDetected }.count
+        let channelingRate = pairs.isEmpty ? 0 : Double(channelingCount) / Double(pairs.count)
+
+        // Per-shot averages (for overlay charts)
+        let avgPressures = pairs.map { pair -> Double in
+            let p = pair.shot.dataPoints.map(\.pressure)
+            guard !p.isEmpty else { return 0 }
+            var arr = p
+            var m: Double = 0
+            vDSP_meanvD(&arr, 1, &m, vDSP_Length(arr.count))
+            return m
+        }
+        let avgFlows = pairs.map { pair -> Double in
+            let f = pair.shot.dataPoints.map(\.flow)
+            guard !f.isEmpty else { return 0 }
+            var arr = f
+            var m: Double = 0
+            vDSP_meanvD(&arr, 1, &m, vDSP_Length(arr.count))
+            return m
+        }
+        let avgTemps = pairs.map { pair -> Double in
+            let t = pair.shot.dataPoints.map(\.temperature)
+            guard !t.isEmpty else { return 0 }
+            var arr = t
+            var m: Double = 0
+            vDSP_meanvD(&arr, 1, &m, vDSP_Length(arr.count))
+            return m
+        }
+
+        // Best shots
+        let best = pairs.sorted { $0.analysis.overallScore > $1.analysis.overallScore }
+            .prefix(5)
+            .map { (shot: $0.shot, score: $0.analysis.overallScore) }
+
+        // Weekly averages
+        let cal = Calendar.current
+        var weekMap = [String: (total: Int, count: Int)]()
+        let weekFmt = DateFormatter()
+        weekFmt.dateFormat = "MMM d"
+        for (s, a) in pairs {
+            let weekStart = cal.dateInterval(of: .weekOfYear, for: s.startTime)?.start ?? s.startTime
+            let key = weekFmt.string(from: weekStart)
+            let existing = weekMap[key] ?? (0, 0)
+            weekMap[key] = (existing.total + a.overallScore, existing.count + 1)
+        }
+        let weeklyAvgs = weekMap.map { (week: $0.key, score: $0.value.total / max($0.value.count, 1)) }
+            .sorted { $0.week < $1.week }
+
+        let trend = analyzeTrend(capped)
+
+        return DashboardAnalytics(
+            shotAnalyses: pairs,
+            scoreHistory: scoreHistory,
+            scoreDistribution: scoreDist,
+            profilePerformance: profilePerf,
+            durationDistribution: durDist,
+            channelingRate: channelingRate,
+            avgPressures: avgPressures,
+            avgFlows: avgFlows,
+            avgTemps: avgTemps,
+            bestShots: best,
+            weeklyAverages: weeklyAvgs,
+            trend: trend
+        )
+    }
+}

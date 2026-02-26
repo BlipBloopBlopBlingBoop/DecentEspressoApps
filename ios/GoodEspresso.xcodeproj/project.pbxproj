@@ -28,6 +28,7 @@
 		1A0000037 /* WatchConnectivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000038; };
 		1A0000039 /* ScaleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000003A; };
 		1A000003F /* ShotAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000003E; };
+		1A0000041 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000040; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -55,6 +56,7 @@
 		1A000003B /* GoodEspresso.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GoodEspresso.entitlements; sourceTree = "<group>"; };
 		1A000003C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		1A000003E /* ShotAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotAnalyzer.swift; sourceTree = "<group>"; };
+		1A0000040 /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -123,6 +125,7 @@
 				1A000001C /* ProfileDetailView.swift */,
 				1A000001E /* LegalView.swift */,
 				1A0000036 /* ProfileEditorView.swift */,
+				1A0000040 /* AnalyticsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -235,6 +238,7 @@
 				1A0000037 /* WatchConnectivityService.swift in Sources */,
 				1A0000039 /* ScaleService.swift in Sources */,
 				1A000003F /* ShotAnalyzer.swift in Sources */,
+				1A0000041 /* AnalyticsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
