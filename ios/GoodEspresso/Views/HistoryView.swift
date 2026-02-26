@@ -204,9 +204,14 @@ struct RatingStars: View {
 struct ShotDetailSheet: View {
     @EnvironmentObject var machineStore: MachineStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let shot: ShotRecord
     @State private var selectedRating: Int = 0
     @State private var notes: String = ""
+
+    private var chartHeight: CGFloat {
+        horizontalSizeClass == .compact ? 220 : 380
+    }
 
     var body: some View {
         NavigationStack {
@@ -218,11 +223,14 @@ struct ShotDetailSheet: View {
                             .font(.headline)
 
                         ShotChartView(dataPoints: shot.dataPoints, isLive: false)
-                            .frame(height: 200)
+                            .frame(minHeight: chartHeight)
                     }
                     .padding()
                     .background(Color.secondarySystemGroupedBg)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    // ML Shot Insights
+                    ShotInsightsCard(shot: shot)
 
                     // Shot Stats
                     ShotStatsSection(shot: shot)
@@ -372,6 +380,173 @@ struct NotesInputSection: View {
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - ML Shot Insights Card
+struct ShotInsightsCard: View {
+    let shot: ShotRecord
+    @State private var analysis: ShotAnalysis?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 6) {
+                Image(systemName: "brain")
+                    .foregroundStyle(.purple)
+                Text("Shot Insights")
+                    .font(.headline)
+                Spacer()
+                Text("On-Device ML")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.purple.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            if let analysis = analysis {
+                // Score ring
+                HStack(spacing: 24) {
+                    ScoreRing(score: analysis.overallScore)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        MetricBar(label: "Pressure", value: analysis.pressureStability, color: .blue)
+                        MetricBar(label: "Flow", value: analysis.flowConsistency, color: .cyan)
+                        MetricBar(label: "Temperature", value: analysis.temperatureControl, color: .orange)
+                        MetricBar(label: "Timing", value: analysis.extractionEfficiency, color: .green)
+                    }
+                }
+
+                // Insights list
+                ForEach(analysis.insights) { insight in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: insight.icon)
+                            .font(.subheadline)
+                            .foregroundStyle(insightColor(insight.severity))
+                            .frame(width: 22)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(insight.title)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text(insight.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                // Grind suggestion
+                if let suggestion = analysis.grindSuggestion {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "gearshape.2.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.orange)
+                            .frame(width: 22)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Grind Adjustment")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text(suggestion)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } else {
+                ProgressView("Analyzing extraction...")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+        }
+        .padding()
+        .background(Color.secondarySystemGroupedBg)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .task {
+            // Run analysis off the main actor
+            let result = await Task.detached {
+                ShotAnalyzer.analyze(shot)
+            }.value
+            analysis = result
+        }
+    }
+
+    func insightColor(_ severity: ShotInsight.Severity) -> Color {
+        switch severity {
+        case .good: return .green
+        case .warning: return .yellow
+        case .critical: return .red
+        }
+    }
+}
+
+// MARK: - Score Ring
+struct ScoreRing: View {
+    let score: Int
+
+    var color: Color {
+        if score >= 80 { return .green }
+        if score >= 60 { return .yellow }
+        return .red
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.2), lineWidth: 8)
+
+            Circle()
+                .trim(from: 0, to: Double(score) / 100.0)
+                .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+
+            VStack(spacing: 0) {
+                Text("\(score)")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .monospacedDigit()
+                Text("Score")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 90, height: 90)
+    }
+}
+
+// MARK: - Metric Bar
+struct MetricBar: View {
+    let label: String
+    let value: Double
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int(value * 100))%")
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .monospacedDigit()
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color.opacity(0.15))
+
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color)
+                        .frame(width: max(0, geo.size.width * min(value, 1.0)))
+                }
+            }
+            .frame(height: 5)
+        }
     }
 }
 
