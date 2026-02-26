@@ -16,6 +16,7 @@ enum NavigationTab: String, CaseIterable, Hashable, Identifiable {
     case control = "Control"
     case history = "History"
     case analytics = "Analytics"
+    case puckSim = "Puck Sim"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -29,6 +30,7 @@ enum NavigationTab: String, CaseIterable, Hashable, Identifiable {
         case .control: return "dial.medium.fill"
         case .history: return "clock.fill"
         case .analytics: return "brain.head.profile.fill"
+        case .puckSim: return "drop.degreesign.fill"
         case .settings: return "gearshape.fill"
         }
     }

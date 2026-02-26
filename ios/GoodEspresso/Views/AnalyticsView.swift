@@ -898,23 +898,94 @@ struct BarChart: View {
     }
 }
 
+// MARK: - Metric Tooltips
+
+private let metricTooltips: [String: String] = [
+    "Overview": "High-level summary of your brewing. Total Shots counts all recorded extractions. Avg Score is a weighted composite (30% pressure stability, 25% flow consistency, 20% extraction timing, 15% temperature control, 10% pre-infusion). Channeling Rate is the fraction of shots where a sudden flow spike (>1 ml/s) coincided with a pressure drop (>0.5 bar) — a signature of water finding a fast path through uneven puck density.",
+    "Score Timeline": "Each shot scored 0-100 by on-device ML. The score weights: pressure stability during the plateau phase (30%), flow rate consistency measured by coefficient of variation (25%), extraction duration vs. the 24-32s ideal window (20%), temperature deviation from setpoint (15%), and pre-infusion quality — ideally 4-8 seconds below 3 bar (10%). A 15-point penalty is applied if channeling is detected.",
+    "Pressure Trends": "Average pressure (bar) per shot. Stable pressure during extraction (low standard deviation on the plateau above 3 bar) indicates an even puck. Large shot-to-shot variation suggests inconsistent grind or distribution. The Decent DE1 measures group pressure at ~100 Hz via the A00D characteristic.",
+    "Flow Trends": "Average flow rate (ml/s) per shot. Consistent flow indicates uniform puck permeability governed by Darcy's law: Q = kA\u{0394}P/\u{00B5}L. Sudden spikes suggest channeling. Gradually increasing flow during a shot is normal as the puck erodes; rapidly increasing flow is not.",
+    "Temperature Trends": "Average mix temperature (\u{00B0}C) per shot. The DE1 reads mix temp, group head temp, and steam temp. Good temperature control means <2\u{00B0}C swing during extraction. Large swings cause uneven extraction — under-extracted sour notes from cool spots, bitter over-extraction from hot spots.",
+    "Score Distribution": "Histogram of your shot scores in 10-point buckets. A right-skewed distribution (clustered 70-100) means consistent technique. A flat or left-skewed distribution suggests variable puck prep. The goal is to tighten the distribution toward higher scores over time.",
+    "Shot Duration": "Histogram of extraction times. The 25-30 second bucket is highlighted as the sweet spot for balanced espresso. Shorter shots tend under-extracted (sour, thin). Longer shots tend over-extracted (bitter, astringent). Duration is primarily controlled by grind size and dose.",
+    "Profile Ranking": "Your brewing profiles ranked by average shot score. Higher-scoring profiles produce more consistent results with your current beans and technique. Usage count helps identify whether a high score is from many shots (reliable) or few (lucky).",
+    "Best Shots": "Your top 5 scoring extractions. Reviewing what profile, grind, and dose produced your best shots helps identify what to replicate. Scores above 85 indicate excellent pressure stability, flow consistency, and timing.",
+    "Channeling Rate": "Percentage of shots where channeling was detected. Channeling occurs when water finds a path of least resistance through the puck — like a river cutting through soft soil. The algorithm detects it as a flow increase >1 ml/s with simultaneous pressure drop >0.5 bar. Causes: poor distribution, uneven tamp, too fine grind with clumps. Fix: WDT (Weiss Distribution Technique), consistent tamp, declumping.",
+    "Weekly Progress": "Average shot score per week. An upward trend means your technique is improving. Plateaus are normal — they often break after changing one variable (grind, dose, distribution technique). Dips often correlate with new beans that need dial-in.",
+    "Shot Comparison": "Side-by-side comparison of two shots across all metrics. Useful for A/B testing: change one variable (e.g., grind 1 click finer) and compare. The mirrored bars make it easy to spot which metrics improved or regressed.",
+]
+
 // MARK: - Helpers
 
-private func cardHeader(_ title: String, icon: String, color: Color) -> some View {
-    HStack(spacing: 6) {
-        Image(systemName: icon)
-            .foregroundStyle(color)
-        Text(title)
-            .font(.headline)
-        Spacer()
-        Text("Accelerate")
-            .font(.system(size: 9))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.1))
-            .clipShape(Capsule())
+struct MetricTooltipCardHeader: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let tooltip: String?
+
+    @State private var showTooltip = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+            Text(title)
+                .font(.headline)
+
+            if tooltip != nil {
+                Button {
+                    showTooltip = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+            Text("Accelerate")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(color.opacity(0.1))
+                .clipShape(Capsule())
+        }
+        .sheet(isPresented: $showTooltip) {
+            if let tooltip = tooltip {
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(spacing: 8) {
+                                Image(systemName: icon)
+                                    .font(.title2)
+                                    .foregroundStyle(color)
+                                Text(title)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+                            Text(tooltip)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .lineSpacing(4)
+                        }
+                        .padding()
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailingCompat) {
+                            Button("Done") { showTooltip = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+        }
     }
+}
+
+private func cardHeader(_ title: String, icon: String, color: Color) -> some View {
+    MetricTooltipCardHeader(title: title, icon: icon, color: color, tooltip: metricTooltips[title])
 }
 
 private func scoreColor(_ score: Int) -> Color {
