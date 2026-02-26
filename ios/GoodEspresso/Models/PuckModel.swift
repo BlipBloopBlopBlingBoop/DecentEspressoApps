@@ -283,10 +283,6 @@ struct PuckCFDSolver {
         // Left (r=0): symmetry (dP/dr = 0)
         // Right (r=nr-1): no-flow (dP/dr = 0)
 
-        for z in 0..<nz {
-            P[0][z] = deltaPressurePa   // Wait, indices are [z][r]
-        }
-        // Fix: set boundary
         for r in 0..<nr {
             P[0][r] = deltaPressurePa        // top
             P[nz-1][r] = exitPressurePa      // bottom
