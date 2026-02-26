@@ -149,7 +149,7 @@ enum PuckSceneBuilder {
 
         let nz = result.gridRows
         let nr = result.gridCols
-        let thetaSegments = 72
+        let thetaSegments = 120
         let cutAngle = Float(cutawayFraction * 2.0 * .pi)
 
         let field = selectField(result: result, mode: mode)
@@ -301,8 +301,8 @@ enum PuckSceneBuilder {
                               grindMicrons: grindSizeMicrons, field: field, mode: mode)
         }
 
-        // Flow streamlines
-        if mode == .flow, cutawayFraction < 0.98 {
+        // Flow streamlines (shown on cutaway in all modes for context)
+        if cutawayFraction < 0.98 {
             addFlowStreamlines(to: scene.rootNode, result: result,
                                puckHeight: puckHeight, radiusAt: radiusAt)
         }
@@ -320,11 +320,11 @@ enum PuckSceneBuilder {
         cam.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(cam)
 
-        // Labels
-        addLabel(to: scene.rootNode, text: "Water In",
-                 position: SCNVector3(0, puckHeight / 2 + 0.12, 0))
-        addLabel(to: scene.rootNode, text: "Basket Exit",
-                 position: SCNVector3(0, -puckHeight / 2 - 0.12, 0))
+        // Labels — offset along z so they don't overlap the puck surface
+        addLabel(to: scene.rootNode, text: "Water In  \u{2193}",
+                 position: SCNVector3(0, puckHeight / 2 + 0.15, 0.3))
+        addLabel(to: scene.rootNode, text: "\u{2191}  Basket Exit",
+                 position: SCNVector3(0, -puckHeight / 2 - 0.15, 0.3))
 
         return scene
     }
@@ -473,53 +473,74 @@ enum PuckSceneBuilder {
     ) {
         let nz = result.gridRows
         let nr = result.gridCols
-        let maxVel = result.velocityField.flatMap { $0 }.max() ?? 1
         let dz = puckHeight / Float(nz)
-        let stepZ = max(1, nz / 10)
-        let stepR = max(1, nr / 6)
+
+        // Use normalized velocity field for consistent sizing
+        let velField = result.velocityField
+
+        // Find max physical velocity for direction computation
+        let physMaxVel = result.grid.flatMap { $0 }.map { $0.flowMagnitude }.max() ?? 1e-10
+
+        // Arrow sizing: max arrow length = 2 cell heights
+        let maxArrowLen = dz * 2.0
+        let stepZ = max(1, nz / 8)
+        let stepR = max(1, nr / 5)
 
         for z in stride(from: stepZ / 2, to: nz, by: stepZ) {
             let rMax = radiusAt(z)
             for r in stride(from: stepR / 2, to: nr, by: stepR) {
-                let cell = result.grid[z][r]
-                let vel = cell.flowMagnitude
-                guard vel > maxVel * 0.08 else { continue }
+                let normVel = Float(velField[z][r])
+                guard normVel > 0.05 else { continue }
 
+                let cell = result.grid[z][r]
                 let rPos = (Float(r) + 0.5) / Float(nr) * rMax
                 let yPos = puckHeight / 2 - (Float(z) + 0.5) * dz
-                let strength = Float(vel / maxVel)
-                let arrowLen = strength * dz * 2.5
+                let arrowLen = max(0.005, normVel * maxArrowLen)
 
-                let cyl = SCNCylinder(radius: 0.003, height: CGFloat(arrowLen))
+                // Flow direction in scene coords:
+                // Physical vR (positive=outward) → scene +x on cutaway face
+                // Physical vZ (positive=downward) → scene -y (y is up)
+                let vr = Float(cell.velocityR / physMaxVel)
+                let vz = Float(-cell.velocityZ / physMaxVel)  // negate: scene y is up
+                let dirLen = sqrt(vr * vr + vz * vz)
+                guard dirLen > 1e-6 else { continue }
+
+                // Angle in x-y plane (scene coords on cutaway face at theta=0)
+                let sceneAngle = atan2(vz, vr)
+
+                // Draw arrow shaft as thin cylinder
+                let cyl = SCNCylinder(radius: 0.002, height: CGFloat(arrowLen))
                 let mat = SCNMaterial()
+                let alpha = 0.3 + normVel * 0.6
                 mat.diffuse.contents = pColor(1, 1, 1)
-                mat.transparency = CGFloat(0.3 + strength * 0.5)
+                mat.transparency = CGFloat(alpha)
                 mat.lightingModel = .constant
                 cyl.materials = [mat]
 
-                let node = SCNNode(geometry: cyl)
-                node.position = SCNVector3(rPos, yPos, 0)
+                let shaftNode = SCNNode(geometry: cyl)
+                // Position at midpoint of arrow along flow direction
+                let midX = rPos + cos(sceneAngle) * arrowLen * 0.5
+                let midY = yPos + sin(sceneAngle) * arrowLen * 0.5
+                shaftNode.position = SCNVector3(midX, midY, 0)
+                // SCNCylinder default axis is Y; rotate so it aligns with flow
+                shaftNode.eulerAngles.z = sceneAngle - .pi / 2
+                parent.addChildNode(shaftNode)
 
-                let angle = atan2(cell.velocityZ, cell.velocityR)
-                node.eulerAngles.z = Float(angle) - .pi / 2
-                parent.addChildNode(node)
-
-                // Arrowhead cone
-                let cone = SCNCone(topRadius: 0, bottomRadius: 0.008, height: CGFloat(arrowLen * 0.3))
+                // Arrowhead at tip
+                let headLen = arrowLen * 0.25
+                let cone = SCNCone(topRadius: 0, bottomRadius: 0.005, height: CGFloat(headLen))
                 let coneMat = SCNMaterial()
                 coneMat.diffuse.contents = pColor(1, 1, 1)
-                coneMat.transparency = CGFloat(0.3 + strength * 0.5)
+                coneMat.transparency = CGFloat(alpha)
                 coneMat.lightingModel = .constant
                 cone.materials = [coneMat]
 
                 let coneNode = SCNNode(geometry: cone)
-                let tipOffset = arrowLen / 2
-                coneNode.position = SCNVector3(
-                    rPos + Float(cos(angle)) * tipOffset,
-                    yPos + Float(sin(angle)) * tipOffset,
-                    0
-                )
-                coneNode.eulerAngles.z = Float(angle) - .pi / 2
+                let tipX = rPos + cos(sceneAngle) * arrowLen
+                let tipY = yPos + sin(sceneAngle) * arrowLen
+                coneNode.position = SCNVector3(tipX, tipY, 0)
+                // Cone default points +Y; rotate to flow direction
+                coneNode.eulerAngles.z = sceneAngle - .pi / 2
                 parent.addChildNode(coneNode)
             }
         }
@@ -595,6 +616,7 @@ enum PuckSceneBuilder {
         case .pressure:     return result.pressureField
         case .flow:         return result.velocityField
         case .extraction:   return result.extractionField
+        case .time:         return result.residenceTimeField
         case .permeability: return result.permeabilityField
         }
     }

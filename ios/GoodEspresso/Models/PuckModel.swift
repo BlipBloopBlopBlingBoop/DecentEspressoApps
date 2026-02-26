@@ -114,6 +114,7 @@ struct PuckCell {
     var velocityZ: Double     // m/s axial (downward positive)
     var flowMagnitude: Double // m/s |v|
     var extractionLevel: Double // 0-1 cumulative
+    var residenceTime: Double   // seconds (contact time)
 }
 
 // MARK: - Simulation Result
@@ -132,6 +133,7 @@ struct PuckSimulationResult {
     let pressureField: [[Double]]      // normalized 0-1
     let velocityField: [[Double]]      // normalized 0-1
     let extractionField: [[Double]]    // 0-1
+    let residenceTimeField: [[Double]] // normalized 0-1
 }
 
 // MARK: - Puck CFD Solver
@@ -348,7 +350,7 @@ struct PuckCFDSolver {
 
         var grid = [[PuckCell]](
             repeating: [PuckCell](
-                repeating: PuckCell(permeability: 0, pressure: 0, velocityR: 0, velocityZ: 0, flowMagnitude: 0, extractionLevel: 0),
+                repeating: PuckCell(permeability: 0, pressure: 0, velocityR: 0, velocityZ: 0, flowMagnitude: 0, extractionLevel: 0, residenceTime: 0),
                 count: nr
             ),
             count: nz
@@ -395,19 +397,40 @@ struct PuckCFDSolver {
             }
         }
 
-        // MARK: Compute extraction levels
-        // Simple model: extraction ∝ cumulative flow through each cell
-        // Higher velocity = more extraction; but too much = channeling (over-extraction in channels)
-        let avgVelocity = maxVelocity > 0 ? maxVelocity * 0.3 : 1e-6
-
+        // MARK: Compute residence time (contact time at each cell)
+        // Residence time ≈ dz / |vz| — how long water stays in each layer
         for z in 0..<nz {
             for r in 0..<nr {
+                let vz = abs(grid[z][r].velocityZ)
+                grid[z][r].residenceTime = vz > 1e-10 ? dz / vz : 100.0
+            }
+        }
+
+        // MARK: Compute extraction levels via cumulative flow integration
+        // Walk top-to-bottom accumulating extraction based on local flow & contact time
+        // Channels (high velocity) → fast transit → under-extraction
+        // Slow zones → long contact → higher extraction
+        // Integrate permeability variation for radial contrast
+        let meanVel = maxVelocity > 0 ? maxVelocity * 0.35 : 1e-6
+
+        for r in 0..<nr {
+            var cumExtraction = 0.0
+            for z in 0..<nz {
                 let v = grid[z][r].flowMagnitude
-                // Extraction relative to average, capped at 1
-                let relFlow = v / (avgVelocity + 1e-10)
-                // Deeper cells have had more contact time
-                let depthFactor = Double(z + 1) / Double(nz)
-                grid[z][r].extractionLevel = min(1.0, relFlow * depthFactor * 0.5)
+                let k = permField[z][r]
+                let kNorm = k / (baseK + 1e-30)
+
+                // Contact time factor: slower flow = more extraction
+                let contactFactor = meanVel / (v + 1e-10)
+                // Depth increment: each layer adds extraction proportional to contact
+                let layerExtraction = min(0.08, contactFactor * 0.03 / kNorm)
+                cumExtraction += layerExtraction
+
+                // Radial variation: edge channels extract less (faster flow near wall)
+                let rNorm = Double(r) / Double(nr - 1)
+                let edgePenalty = rNorm > 0.8 ? 1.0 - (rNorm - 0.8) * 2.0 : 1.0
+
+                grid[z][r].extractionLevel = min(1.0, cumExtraction * edgePenalty)
             }
         }
 
@@ -470,14 +493,29 @@ struct PuckCFDSolver {
         let effectiveShotTime = totalFlowMLs > 0 ? targetYieldML / totalFlowMLs : 30.0
 
         // Build normalized fields for visualization
+        // Use power-law stretching (gamma correction) for better visual contrast
         let maxPressure = deltaPressurePa > 0 ? deltaPressurePa : 1.0
         let maxPerm = permField.flatMap { $0 }.max() ?? 1.0
         let maxVel = maxVelocity > 0 ? maxVelocity : 1.0
 
+        // Pressure: linear is fine (already spans full range)
         let pressureNorm = P.map { row in row.map { max(0, min(1, $0 / maxPressure)) } }
-        let permNorm = permField.map { row in row.map { $0 / maxPerm } }
-        let velNorm = grid.map { row in row.map { $0.flowMagnitude / maxVel } }
+
+        // Permeability: mild gamma to reveal variation
+        let permNorm = permField.map { row in row.map { pow($0 / maxPerm, 0.6) } }
+
+        // Velocity: strong gamma to spread the clustered mid-range values
+        let velNorm = grid.map { row in row.map { pow($0.flowMagnitude / maxVel, 0.45) } }
+
+        // Extraction: already cumulative 0-1
         let extractNorm = grid.map { row in row.map { $0.extractionLevel } }
+
+        // Residence time: normalize and apply gamma
+        let maxResidence = grid.flatMap { $0 }.map { $0.residenceTime }.filter { $0 < 50 }.max() ?? 1.0
+        let residenceNorm = grid.map { row in row.map {
+            let clamped = min($0.residenceTime / maxResidence, 1.0)
+            return pow(clamped, 0.5)
+        }}
 
         return PuckSimulationResult(
             grid: grid,
@@ -492,7 +530,8 @@ struct PuckCFDSolver {
             permeabilityField: permNorm,
             pressureField: pressureNorm,
             velocityField: velNorm,
-            extractionField: extractNorm
+            extractionField: extractNorm,
+            residenceTimeField: residenceNorm
         )
     }
 }

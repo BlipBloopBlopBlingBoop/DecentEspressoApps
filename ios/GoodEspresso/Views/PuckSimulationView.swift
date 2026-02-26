@@ -12,9 +12,10 @@ import SwiftUI
 
 enum PuckVizMode: String, CaseIterable, Identifiable {
     case pressure     = "Pressure"
-    case flow         = "Flow Velocity"
+    case flow         = "Flow"
     case extraction   = "Extraction"
-    case permeability = "Permeability"
+    case time         = "Time"
+    case permeability = "Perm"
 
     var id: String { rawValue }
 
@@ -23,6 +24,7 @@ enum PuckVizMode: String, CaseIterable, Identifiable {
         case .pressure:     return "gauge.with.needle.fill"
         case .flow:         return "wind"
         case .extraction:   return "cup.and.saucer.fill"
+        case .time:         return "clock.fill"
         case .permeability: return "circle.grid.3x3.fill"
         }
     }
@@ -32,6 +34,7 @@ enum PuckVizMode: String, CaseIterable, Identifiable {
         case .pressure:     return ("0 bar", "Brew P")
         case .flow:         return ("Stagnant", "Fast")
         case .extraction:   return ("Under", "Over")
+        case .time:         return ("Fast transit", "Long contact")
         case .permeability: return ("Dense", "Porous")
         }
     }
@@ -614,6 +617,22 @@ func heatmapColor(_ value: Double, mode: PuckVizMode) -> Color {
         } else {
             let f = (t - 0.75) / 0.25
             return Color(red: 1.0, green: 0.7 - f * 0.55, blue: 0.1 - f * 0.1)
+        }
+
+    case .time:
+        // Cool blue (fast transit) -> Teal -> Warm amber -> Red (long contact/stagnant)
+        if t < 0.25 {
+            let f = t / 0.25
+            return Color(red: 0.05, green: 0.15 + f * 0.35, blue: 0.5 + f * 0.3)
+        } else if t < 0.5 {
+            let f = (t - 0.25) / 0.25
+            return Color(red: 0.05 + f * 0.2, green: 0.5 + f * 0.3, blue: 0.8 - f * 0.3)
+        } else if t < 0.75 {
+            let f = (t - 0.5) / 0.25
+            return Color(red: 0.25 + f * 0.65, green: 0.8 - f * 0.15, blue: 0.5 - f * 0.35)
+        } else {
+            let f = (t - 0.75) / 0.25
+            return Color(red: 0.9 + f * 0.1, green: 0.65 - f * 0.45, blue: 0.15 - f * 0.1)
         }
 
     case .permeability:
