@@ -31,6 +31,7 @@
 		1A0000041 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000040; };
 		1A0000043 /* PuckModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000042; };
 		1A0000045 /* PuckSimulationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000044; };
+		1A0000047 /* Puck3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000046; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -61,6 +62,7 @@
 		1A0000040 /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
 		1A0000042 /* PuckModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckModel.swift; sourceTree = "<group>"; };
 		1A0000044 /* PuckSimulationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckSimulationView.swift; sourceTree = "<group>"; };
+		1A0000046 /* Puck3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Puck3DView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -132,6 +134,7 @@
 				1A0000036 /* ProfileEditorView.swift */,
 				1A0000040 /* AnalyticsView.swift */,
 				1A0000044 /* PuckSimulationView.swift */,
+				1A0000046 /* Puck3DView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -247,6 +250,7 @@
 				1A0000041 /* AnalyticsView.swift in Sources */,
 				1A0000043 /* PuckModel.swift in Sources */,
 				1A0000045 /* PuckSimulationView.swift in Sources */,
+				1A0000047 /* Puck3DView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

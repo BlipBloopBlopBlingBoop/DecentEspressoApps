@@ -40,15 +40,26 @@ enum PuckVizMode: String, CaseIterable, Identifiable {
 // MARK: - Main View
 
 struct PuckSimulationView: View {
+    @EnvironmentObject var machineStore: MachineStore
     @State private var params = PuckParameters()
     @State private var result: PuckSimulationResult?
     @State private var vizMode: PuckVizMode = .flow
     @State private var isComputing = false
     @State private var showBasketPicker = false
     @State private var showParameterInfo = false
+    @State private var isLiveMode = false
+    @State private var show3D = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
+
+    /// Aspect ratio based on actual puck geometry (diameter / height), mirrored
+    private var puckAspectRatio: CGFloat {
+        let diameter = params.basket.diameter  // mm
+        let height = max(params.puckHeightMM, 5)  // mm, floor to avoid division issues
+        // Full cross-section width = diameter, height = puck height
+        return CGFloat(diameter / height)
+    }
 
     var body: some View {
         NavigationStack {
@@ -64,10 +75,27 @@ struct PuckSimulationView: View {
             .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailingCompat) {
-                    Button {
-                        showParameterInfo = true
-                    } label: {
-                        Image(systemName: "info.circle")
+                    HStack(spacing: 12) {
+                        Button {
+                            withAnimation { isLiveMode.toggle() }
+                        } label: {
+                            Image(systemName: isLiveMode ? "antenna.radiowaves.left.and.right.circle.fill" : "antenna.radiowaves.left.and.right.circle")
+                                .foregroundStyle(isLiveMode ? .green : .secondary)
+                        }
+                        .disabled(!machineStore.isConnected)
+
+                        Button {
+                            withAnimation { show3D.toggle() }
+                        } label: {
+                            Image(systemName: show3D ? "cube.fill" : "cube")
+                                .foregroundStyle(show3D ? .cyan : .secondary)
+                        }
+
+                        Button {
+                            showParameterInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                        }
                     }
                 }
             }
@@ -76,6 +104,17 @@ struct PuckSimulationView: View {
             }
             .task {
                 await runSimulation()
+            }
+            .onChangeCompat(of: machineStore.machineState.pressure) {
+                guard isLiveMode else { return }
+                syncFromMachine()
+                Task { await runSimulation() }
+            }
+            .onChangeCompat(of: isLiveMode) {
+                if isLiveMode {
+                    syncFromMachine()
+                    Task { await runSimulation() }
+                }
             }
         }
     }
@@ -197,17 +236,49 @@ struct PuckSimulationView: View {
             }
             .pickerStyle(.segmented)
 
-            // Canvas heatmap
+            // Live mode banner
+            if isLiveMode {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(machineStore.machineState.state == .brewing ? .green : .orange)
+                        .frame(width: 8, height: 8)
+                    Text(machineStore.machineState.state == .brewing ? "Live — Brewing" : "Live — Waiting for shot")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text(String(format: "%.1f bar / %.1f\u{00B0}C",
+                                machineStore.machineState.pressure,
+                                machineStore.machineState.temperature.mix))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.green.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            // Visualization
             if let result = result {
-                PuckHeatmapCanvas(result: result, mode: vizMode)
-                    .frame(minHeight: isCompact ? 280 : 360)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                if show3D {
+                    Puck3DSceneView(result: result, mode: vizMode)
+                        .aspectRatio(1.2, contentMode: .fit)
+                        .frame(maxHeight: isCompact ? 300 : 400)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    PuckHeatmapCanvas(result: result, mode: vizMode)
+                        .aspectRatio(puckAspectRatio, contentMode: .fit)
+                        .frame(maxHeight: isCompact ? 300 : 400)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
 
                 // Legend bar
                 legendBar
             } else {
                 ProgressView("Simulating...")
-                    .frame(maxWidth: .infinity, minHeight: 280)
+                    .frame(maxWidth: .infinity, minHeight: 120)
             }
         }
         .analyticsCard()
@@ -455,6 +526,18 @@ struct PuckSimulationView: View {
             .disabled(isComputing)
         }
         .analyticsCard()
+    }
+
+    // MARK: - Live Machine Sync
+
+    private func syncFromMachine() {
+        let state = machineStore.machineState
+        if state.pressure > 0 {
+            params.brewPressureBar = state.pressure
+        }
+        if state.temperature.mix > 0 {
+            params.waterTempC = state.temperature.mix
+        }
     }
 
     // MARK: - Simulation Runner
