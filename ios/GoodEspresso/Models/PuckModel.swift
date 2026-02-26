@@ -200,7 +200,7 @@ struct PuckCFDSolver {
     // MARK: - Main Simulation
 
     /// Run full 2D axisymmetric puck simulation
-    static func simulate(params: PuckParameters, gridRows: Int = 32, gridCols: Int = 20) -> PuckSimulationResult {
+    static func simulate(params: PuckParameters, gridRows: Int = 64, gridCols: Int = 40) -> PuckSimulationResult {
         let nz = gridRows  // axial divisions (top to bottom)
         let nr = gridCols  // radial divisions (center to wall)
 
@@ -288,9 +288,9 @@ struct PuckCFDSolver {
             P[nz-1][r] = exitPressurePa      // bottom
         }
 
-        let omega: Double = 1.4  // SOR relaxation factor
-        let maxIter = 200
-        let tolerance = 1.0  // Pa
+        let omega: Double = 1.5  // SOR relaxation factor
+        let maxIter = 500
+        let tolerance = 0.5  // Pa
 
         for _ in 0..<maxIter {
             var maxChange: Double = 0

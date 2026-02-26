@@ -48,17 +48,16 @@ struct PuckSimulationView: View {
     @State private var showBasketPicker = false
     @State private var showParameterInfo = false
     @State private var isLiveMode = false
-    @State private var show3D = false
+    @State private var simulationSerial: Int = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
 
-    /// Aspect ratio based on actual puck geometry (diameter / height), mirrored
-    private var puckAspectRatio: CGFloat {
-        let diameter = params.basket.diameter  // mm
-        let height = max(params.puckHeightMM, 5)  // mm, floor to avoid division issues
-        // Full cross-section width = diameter, height = puck height
-        return CGFloat(diameter / height)
+    /// Fingerprint of all params — when this changes, re-run simulation
+    private var paramFingerprint: String {
+        "\(params.grindSizeMicrons)|\(params.doseGrams)|\(params.tampPressureKg)|" +
+        "\(params.brewPressureBar)|\(params.waterTempC)|\(params.beanDensity)|" +
+        "\(params.moistureContent)|\(params.distributionQuality)|\(params.basket.id)"
     }
 
     var body: some View {
@@ -85,13 +84,6 @@ struct PuckSimulationView: View {
                         .disabled(!machineStore.isConnected)
 
                         Button {
-                            withAnimation { show3D.toggle() }
-                        } label: {
-                            Image(systemName: show3D ? "cube.fill" : "cube")
-                                .foregroundStyle(show3D ? .cyan : .secondary)
-                        }
-
-                        Button {
                             showParameterInfo = true
                         } label: {
                             Image(systemName: "info.circle")
@@ -105,16 +97,22 @@ struct PuckSimulationView: View {
             .task {
                 await runSimulation()
             }
+            .onChangeCompat(of: paramFingerprint) {
+                // Debounced auto-run: increment serial, wait, check if still current
+                simulationSerial += 1
+                let serial = simulationSerial
+                Task {
+                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
+                    guard serial == simulationSerial else { return }
+                    await runSimulation()
+                }
+            }
             .onChangeCompat(of: machineStore.machineState.pressure) {
                 guard isLiveMode else { return }
                 syncFromMachine()
-                Task { await runSimulation() }
             }
             .onChangeCompat(of: isLiveMode) {
-                if isLiveMode {
-                    syncFromMachine()
-                    Task { await runSimulation() }
-                }
+                if isLiveMode { syncFromMachine() }
             }
         }
     }
@@ -179,7 +177,6 @@ struct PuckSimulationView: View {
                                 params.basket = basket
                                 params.doseGrams = basket.nominalDose
                             }
-                            Task { await runSimulation() }
                         }
                     }
                 }
@@ -258,27 +255,31 @@ struct PuckSimulationView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }
 
-            // Visualization
+            // 3D Visualization
             if let result = result {
-                if show3D {
-                    Puck3DSceneView(result: result, mode: vizMode)
-                        .aspectRatio(1.2, contentMode: .fit)
-                        .frame(maxHeight: isCompact ? 300 : 400)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    PuckHeatmapCanvas(result: result, mode: vizMode)
-                        .aspectRatio(puckAspectRatio, contentMode: .fit)
-                        .frame(maxHeight: isCompact ? 300 : 400)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
+                Puck3DSceneView(
+                    result: result,
+                    mode: vizMode,
+                    basketSpec: params.basket,
+                    grindSizeMicrons: params.grindSizeMicrons,
+                    isComputing: isComputing
+                )
+                .aspectRatio(1.1, contentMode: .fit)
+                .frame(minHeight: isCompact ? 260 : 320)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 // Legend bar
                 legendBar
             } else {
-                ProgressView("Simulating...")
-                    .frame(maxWidth: .infinity, minHeight: 120)
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .tint(.cyan)
+                    Text("Running CFD simulation...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 200)
             }
         }
         .analyticsCard()
@@ -510,20 +511,23 @@ struct PuckSimulationView: View {
                 displayUnit: "%"
             )
 
-            Button {
-                Task { await runSimulation() }
-            } label: {
-                HStack {
-                    Image(systemName: "play.fill")
-                    Text("Run Simulation")
+            // Status
+            HStack(spacing: 6) {
+                if isComputing {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Updating...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    Text("Visualization is live — drag sliders to update")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.orange)
-            .disabled(isComputing)
         }
         .analyticsCard()
     }
@@ -552,156 +556,6 @@ struct PuckSimulationView: View {
             result = res
         }
         isComputing = false
-    }
-}
-
-// MARK: - Canvas Heatmap Renderer
-
-struct PuckHeatmapCanvas: View {
-    let result: PuckSimulationResult
-    let mode: PuckVizMode
-
-    var body: some View {
-        Canvas { context, size in
-            let rows = result.gridRows
-            let cols = result.gridCols
-
-            // Mirror the radial dimension for full cross-section
-            let totalCols = cols * 2
-            let cellW = size.width / CGFloat(totalCols)
-            let cellH = size.height / CGFloat(rows)
-
-            let field: [[Double]]
-            switch mode {
-            case .pressure:     field = result.pressureField
-            case .flow:         field = result.velocityField
-            case .extraction:   field = result.extractionField
-            case .permeability: field = result.permeabilityField
-            }
-
-            // Draw mirrored cross-section
-            for z in 0..<rows {
-                for r in 0..<cols {
-                    let val = field[z][r]
-                    let color = heatmapColor(val, mode: mode)
-
-                    // Right half (original)
-                    let xRight = CGFloat(cols + r) * cellW
-                    let y = CGFloat(z) * cellH
-                    let rectRight = CGRect(x: xRight, y: y, width: cellW + 0.5, height: cellH + 0.5)
-                    context.fill(Path(rectRight), with: .color(color))
-
-                    // Left half (mirror)
-                    let xLeft = CGFloat(cols - 1 - r) * cellW
-                    let rectLeft = CGRect(x: xLeft, y: y, width: cellW + 0.5, height: cellH + 0.5)
-                    context.fill(Path(rectLeft), with: .color(color))
-                }
-            }
-
-            // Draw flow arrows in flow mode
-            if mode == .flow {
-                let arrowSpacingR = max(1, cols / 8)
-                let arrowSpacingZ = max(1, rows / 10)
-
-                for z in stride(from: arrowSpacingZ / 2, to: rows, by: arrowSpacingZ) {
-                    for r in stride(from: arrowSpacingR / 2, to: cols, by: arrowSpacingR) {
-                        let cell = result.grid[z][r]
-                        let vel = cell.flowMagnitude
-                        let maxVel = result.velocityField.flatMap { $0 }.max() ?? 1
-                        guard vel > maxVel * 0.05 else { continue }
-
-                        let arrowLen = min(cellW * CGFloat(arrowSpacingR) * 0.7,
-                                          CGFloat(vel / maxVel) * cellW * CGFloat(arrowSpacingR) * 0.8)
-                        let angle = atan2(cell.velocityZ, cell.velocityR)
-
-                        // Right half
-                        let cx = CGFloat(cols + r) * cellW + cellW / 2
-                        let cy = CGFloat(z) * cellH + cellH / 2
-                        drawArrow(context: &context, at: CGPoint(x: cx, y: cy),
-                                 angle: angle, length: arrowLen, color: .white.opacity(0.7))
-
-                        // Left half (mirror radial component)
-                        let cxL = CGFloat(cols - 1 - r) * cellW + cellW / 2
-                        let mirrorAngle = atan2(cell.velocityZ, -cell.velocityR)
-                        drawArrow(context: &context, at: CGPoint(x: cxL, y: cy),
-                                 angle: mirrorAngle, length: arrowLen, color: .white.opacity(0.7))
-                    }
-                }
-            }
-
-            // Draw channel markers
-            if mode == .flow || mode == .extraction {
-                for loc in result.channelLocations {
-                    let cx = CGFloat(cols + loc.r) * cellW + cellW / 2
-                    let cy = CGFloat(loc.z) * cellH + cellH / 2
-                    let markerSize: CGFloat = max(cellW, cellH) * 1.2
-                    let ring = Path(ellipseIn: CGRect(x: cx - markerSize/2, y: cy - markerSize/2,
-                                                       width: markerSize, height: markerSize))
-                    context.stroke(ring, with: .color(.white.opacity(0.4)), lineWidth: 1)
-
-                    // Mirror
-                    let cxL = CGFloat(cols - 1 - loc.r) * cellW + cellW / 2
-                    let ringL = Path(ellipseIn: CGRect(x: cxL - markerSize/2, y: cy - markerSize/2,
-                                                        width: markerSize, height: markerSize))
-                    context.stroke(ringL, with: .color(.white.opacity(0.4)), lineWidth: 1)
-                }
-            }
-
-            // Draw basket outline
-            let outlinePath = Path(roundedRect: CGRect(x: 0.5, y: 0.5,
-                                                        width: size.width - 1, height: size.height - 1),
-                                   cornerRadius: 4)
-            context.stroke(outlinePath, with: .color(.gray.opacity(0.5)), lineWidth: 1)
-
-            // Center line
-            var centerLine = Path()
-            centerLine.move(to: CGPoint(x: size.width / 2, y: 0))
-            centerLine.addLine(to: CGPoint(x: size.width / 2, y: size.height))
-            context.stroke(centerLine, with: .color(.white.opacity(0.15)),
-                          style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
-
-            // Labels
-            let topLabel = context.resolve(Text("Water In").font(.system(size: 9, weight: .medium)))
-            context.draw(topLabel, at: CGPoint(x: size.width / 2, y: 10))
-
-            let bottomLabel = context.resolve(Text("Basket Exit").font(.system(size: 9, weight: .medium)))
-            context.draw(bottomLabel, at: CGPoint(x: size.width / 2, y: size.height - 10))
-
-            let leftLabel = context.resolve(Text("Wall").font(.system(size: 8)))
-            context.draw(leftLabel, at: CGPoint(x: 16, y: size.height / 2))
-
-            let rightLabel = context.resolve(Text("Wall").font(.system(size: 8)))
-            context.draw(rightLabel, at: CGPoint(x: size.width - 16, y: size.height / 2))
-        }
-        .background(Color.black.opacity(0.9))
-    }
-
-    private func drawArrow(context: inout GraphicsContext, at point: CGPoint,
-                           angle: Double, length: CGFloat, color: Color) {
-        let dx = cos(angle) * Double(length)
-        let dy = sin(angle) * Double(length)
-        let endX = point.x + CGFloat(dx)
-        let endY = point.y + CGFloat(dy)
-
-        var path = Path()
-        path.move(to: point)
-        path.addLine(to: CGPoint(x: endX, y: endY))
-
-        // Arrowhead
-        let headLen = length * 0.3
-        let headAngle = 0.5
-        path.move(to: CGPoint(x: endX, y: endY))
-        path.addLine(to: CGPoint(
-            x: endX - CGFloat(cos(angle - headAngle)) * headLen,
-            y: endY - CGFloat(sin(angle - headAngle)) * headLen
-        ))
-        path.move(to: CGPoint(x: endX, y: endY))
-        path.addLine(to: CGPoint(
-            x: endX - CGFloat(cos(angle + headAngle)) * headLen,
-            y: endY - CGFloat(sin(angle + headAngle)) * headLen
-        ))
-
-        context.stroke(path, with: .color(color), lineWidth: 1)
     }
 }
 
