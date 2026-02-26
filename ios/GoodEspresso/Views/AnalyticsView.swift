@@ -874,8 +874,8 @@ struct BarChart: View {
 
                         // Value label above bar
                         if val > 0 {
-                            let text = Text("\(Int(val))").font(.system(size: 9)).foregroundStyle(.secondary)
-                            context.draw(text, at: CGPoint(x: x + barWidth / 2, y: y - 8))
+                            let resolved = context.resolve(Text("\(Int(val))").font(.system(size: 9)))
+                            context.draw(resolved, at: CGPoint(x: x + barWidth / 2, y: y - 8))
                         }
                     }
                 }
