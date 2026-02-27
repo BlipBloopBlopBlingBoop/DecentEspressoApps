@@ -392,7 +392,8 @@ struct PuckCFDSolver {
                     velocityR: vr,
                     velocityZ: vz,
                     flowMagnitude: vmag,
-                    extractionLevel: 0
+                    extractionLevel: 0,
+                    residenceTime: 0
                 )
             }
         }
