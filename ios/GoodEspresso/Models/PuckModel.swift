@@ -216,7 +216,15 @@ struct PuckCFDSolver {
 
         // Build permeability field with spatial variation
         var permField = [[Double]](repeating: [Double](repeating: 0, count: nr), count: nz)
-        let baseK = kozenyCarmanPermeability(particleDiameterM: particleD, porosity: params.porosity)
+
+        // Kozeny-Carman assumes uniform spheres. Real espresso grinds have a
+        // bimodal particle distribution where fines (~30-50µm) fill interstitial
+        // voids between boulders, plus angular particle shapes and swelling during
+        // extraction. These effects reduce effective permeability by ~4 orders of
+        // magnitude vs K-C prediction for the median grind size.
+        // Calibrated to produce ~1-3 mL/s at 9 bar for typical espresso parameters.
+        let espressoPackingCorrection: Double = 2.5e-5
+        let baseK = kozenyCarmanPermeability(particleDiameterM: particleD, porosity: params.porosity) * espressoPackingCorrection
 
         // Seed deterministic pseudo-random for distribution quality
         // Lower distribution quality = more variation

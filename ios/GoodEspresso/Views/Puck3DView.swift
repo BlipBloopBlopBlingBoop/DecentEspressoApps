@@ -19,6 +19,7 @@ struct Puck3DSceneView: View {
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
     let isComputing: Bool
+    var animationProgress: Double = 1.0
 
     @State private var cutawayFraction: Double = 0.75
 
@@ -29,7 +30,8 @@ struct Puck3DSceneView: View {
                 mode: mode,
                 basketSpec: basketSpec,
                 grindSizeMicrons: grindSizeMicrons,
-                cutawayFraction: cutawayFraction
+                cutawayFraction: cutawayFraction,
+                animationProgress: animationProgress
             )
             .background(Color.black)
 
@@ -82,6 +84,7 @@ struct PuckSceneRepresentable: UIViewRepresentable {
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
     let cutawayFraction: Double
+    var animationProgress: Double = 1.0
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -91,7 +94,8 @@ struct PuckSceneRepresentable: UIViewRepresentable {
         scnView.antialiasingMode = .multisampling4X
         scnView.scene = PuckSceneBuilder.buildScene(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction
+            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction,
+            animationProgress: animationProgress
         )
         return scnView
     }
@@ -99,7 +103,8 @@ struct PuckSceneRepresentable: UIViewRepresentable {
     func updateUIView(_ scnView: SCNView, context: Context) {
         scnView.scene = PuckSceneBuilder.buildScene(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction
+            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction,
+            animationProgress: animationProgress
         )
     }
 }
@@ -110,6 +115,7 @@ struct PuckSceneRepresentable: NSViewRepresentable {
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
     let cutawayFraction: Double
+    var animationProgress: Double = 1.0
 
     func makeNSView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -119,7 +125,8 @@ struct PuckSceneRepresentable: NSViewRepresentable {
         scnView.antialiasingMode = .multisampling4X
         scnView.scene = PuckSceneBuilder.buildScene(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction
+            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction,
+            animationProgress: animationProgress
         )
         return scnView
     }
@@ -127,7 +134,8 @@ struct PuckSceneRepresentable: NSViewRepresentable {
     func updateNSView(_ scnView: SCNView, context: Context) {
         scnView.scene = PuckSceneBuilder.buildScene(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction
+            grindSizeMicrons: grindSizeMicrons, cutawayFraction: cutawayFraction,
+            animationProgress: animationProgress
         )
     }
 }
@@ -142,7 +150,8 @@ enum PuckSceneBuilder {
         mode: PuckVizMode,
         basketSpec: BasketSpec,
         grindSizeMicrons: Double,
-        cutawayFraction: Double
+        cutawayFraction: Double,
+        animationProgress: Double = 1.0
     ) -> SCNScene {
         let scene = SCNScene()
         scene.background.contents = pColor(0.04, 0.04, 0.07)
@@ -152,7 +161,8 @@ enum PuckSceneBuilder {
         let thetaSegments = 120
         let cutAngle = Float(cutawayFraction * 2.0 * .pi)
 
-        let field = selectField(result: result, mode: mode)
+        let rawField = selectField(result: result, mode: mode)
+        let field = applyAnimationProgress(to: rawField, progress: animationProgress, mode: mode)
 
         // Basket geometry: real Decent baskets taper ~2mm narrower at bottom
         let topRadius: Float = 1.0
@@ -610,6 +620,47 @@ enum PuckSceneBuilder {
     }
 
     // MARK: - Color Helpers
+
+    // MARK: - Animation Progress
+
+    /// Applies extraction animation to a field: water front sweeps top-to-bottom,
+    /// values ramp up behind the front. Permeability is unaffected (physical property).
+    static func applyAnimationProgress(to field: [[Double]], progress: Double, mode: PuckVizMode) -> [[Double]] {
+        guard progress < 1.0 else { return field }
+        if mode == .permeability { return field }
+
+        let nz = field.count
+        guard nz > 0 else { return field }
+
+        // Water front reaches bottom at progress ≈ 0.65, then values deepen to full
+        let frontRow = progress * Double(nz) / 0.65
+
+        return field.enumerated().map { (z, row) in
+            let zD = Double(z)
+            if zD > frontRow + 2.0 {
+                // Below the water front: no water yet
+                return [Double](repeating: 0, count: row.count)
+            } else {
+                // Above or at front: ramp based on time since water arrived
+                let timeSinceArrival = max(0, frontRow - zD) / Double(nz)
+                let frontEdge = zD <= frontRow ? 1.0 : max(0, 1.0 - (zD - frontRow) / 2.0)
+                let rampUp: Double
+                switch mode {
+                case .extraction:
+                    // Extraction builds slowly as water passes through
+                    rampUp = min(1.0, timeSinceArrival * 2.0)
+                case .pressure:
+                    // Pressure establishes quickly
+                    rampUp = min(1.0, timeSinceArrival * 6.0)
+                default:
+                    // Flow and residence time
+                    rampUp = min(1.0, timeSinceArrival * 3.0)
+                }
+                let factor = rampUp * frontEdge
+                return row.map { $0 * factor }
+            }
+        }
+    }
 
     static func selectField(result: PuckSimulationResult, mode: PuckVizMode) -> [[Double]] {
         switch mode {

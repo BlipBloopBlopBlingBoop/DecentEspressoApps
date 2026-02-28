@@ -52,6 +52,8 @@ struct PuckSimulationView: View {
     @State private var showParameterInfo = false
     @State private var isLiveMode = false
     @State private var simulationSerial: Int = 0
+    @State private var animationProgress: Double = 1.0
+    @State private var isAnimating = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
@@ -101,6 +103,9 @@ struct PuckSimulationView: View {
                 await runSimulation()
             }
             .onChangeCompat(of: paramFingerprint) {
+                // Stop animation and reset to final state on parameter change
+                isAnimating = false
+                animationProgress = 1.0
                 // Debounced auto-run: increment serial, wait, check if still current
                 simulationSerial += 1
                 let serial = simulationSerial
@@ -116,6 +121,12 @@ struct PuckSimulationView: View {
             }
             .onChangeCompat(of: isLiveMode) {
                 if isLiveMode { syncFromMachine() }
+            }
+            .onChangeCompat(of: machineStore.machineState.state) {
+                // Auto-start animation when a shot begins in live mode
+                if isLiveMode && machineStore.machineState.state == .brewing && !isAnimating {
+                    toggleAnimation()
+                }
             }
         }
     }
@@ -219,6 +230,25 @@ struct PuckSimulationView: View {
                 Text("Puck Cross-Section")
                     .font(.headline)
                 Spacer()
+
+                Button {
+                    toggleAnimation()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isAnimating ? "stop.fill" : "play.fill")
+                            .font(.system(size: 10))
+                        Text(isAnimating ? "Stop" : "Animate")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(isAnimating ? .red : .green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background((isAnimating ? Color.red : Color.green).opacity(0.1))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(result == nil)
+
                 Text("CFD")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
@@ -265,12 +295,28 @@ struct PuckSimulationView: View {
                     mode: vizMode,
                     basketSpec: params.basket,
                     grindSizeMicrons: params.grindSizeMicrons,
-                    isComputing: isComputing
+                    isComputing: isComputing,
+                    animationProgress: animationProgress
                 )
                 .aspectRatio(1.1, contentMode: .fit)
                 .frame(minHeight: isCompact ? 260 : 320)
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // Animation progress bar
+                if animationProgress < 1.0 {
+                    let shotTime = result.effectiveShotTime
+                    HStack(spacing: 8) {
+                        Text(String(format: "%.1fs", animationProgress * shotTime))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.cyan)
+                        ProgressView(value: animationProgress)
+                            .tint(.cyan)
+                        Text(String(format: "%.0fs", shotTime))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 // Legend bar
                 legendBar
@@ -333,7 +379,7 @@ struct PuckSimulationView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     SimStat(
                         label: "Flow Rate",
-                        value: String(format: "%.1f ml/s", r.totalFlowRate),
+                        value: String(format: "%.1f ml/s", r.totalFlowRate * min(1.0, animationProgress * 2.5)),
                         icon: "drop.fill",
                         color: .cyan
                     )
@@ -559,6 +605,32 @@ struct PuckSimulationView: View {
             result = res
         }
         isComputing = false
+    }
+
+    // MARK: - Extraction Animation
+
+    private func toggleAnimation() {
+        if isAnimating {
+            isAnimating = false
+            animationProgress = 1.0
+            return
+        }
+        animationProgress = 0
+        isAnimating = true
+        Task { @MainActor in
+            // Animation duration matches estimated shot time, clamped to 10-40s
+            let duration = min(40.0, max(10.0, result?.effectiveShotTime ?? 25.0))
+            let fps: Double = 15
+            let dt = 1.0 / fps
+            let progressPerFrame = dt / duration
+            while isAnimating && animationProgress < 1.0 {
+                try? await Task.sleep(nanoseconds: UInt64(dt * 1_000_000_000))
+                guard isAnimating else { break }
+                animationProgress = min(1.0, animationProgress + progressPerFrame)
+            }
+            isAnimating = false
+            animationProgress = 1.0
+        }
     }
 }
 
