@@ -54,8 +54,8 @@ struct PuckSimulationView: View {
     @State private var simulationSerial: Int = 0
     @State private var animationProgress: Double = 1.0
     @State private var isAnimating = false
-    @State private var cutX: Double = 0.0    // 0 = cut to center, 1 = no cut
-    @State private var cutZ: Double = 0.0    // 0 = cut to center, 1 = no cut
+    @State private var cutX: Double = 0.55   // 0 = cut to center, 1 = no cut
+    @State private var cutZ: Double = 0.55   // 0 = cut to center, 1 = no cut
     @State private var showGestureHints = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -223,122 +223,116 @@ struct PuckSimulationView: View {
 
     private var visualizationCard: some View {
         VStack(spacing: 0) {
-            // 3D visualization with floating overlay controls and vertical clip sliders
+            // 3D visualization with floating overlay controls
             ZStack {
                 if let result = result {
-                    // Main content: 3D scene flanked by vertical clip sliders
-                    HStack(spacing: 0) {
-                        // Left slider: Z-axis clip
-                        verticalClipSlider(value: $cutZ, label: "Z", side: .leading)
+                    // Full-bleed 3D scene
+                    Puck3DSceneView(
+                        result: result,
+                        mode: vizMode,
+                        basketSpec: params.basket,
+                        grindSizeMicrons: params.grindSizeMicrons,
+                        animationProgress: animationProgress,
+                        cutX: cutX,
+                        cutZ: cutZ
+                    )
 
-                        // Center: 3D scene with overlays
-                        ZStack {
-                            // Full-bleed 3D scene
-                            Puck3DSceneView(
-                                result: result,
-                                mode: vizMode,
-                                basketSpec: params.basket,
-                                grindSizeMicrons: params.grindSizeMicrons,
-                                animationProgress: animationProgress,
-                                cutX: cutX,
-                                cutZ: cutZ
-                            )
+                    // Floating overlay controls
+                    VStack(spacing: 0) {
+                        // Top: mode picker pills
+                        floatingModePicker
+                            .padding(.top, 10)
 
-                            // Floating overlay controls
-                            VStack(spacing: 0) {
-                                // Top: mode picker pills
-                                floatingModePicker
-                                    .padding(.top, 10)
+                        Spacer()
+
+                        // Bottom controls over gradient fade
+                        VStack(spacing: 6) {
+                            // Animation controls row
+                            HStack(spacing: 10) {
+                                // Play/stop button
+                                Button {
+                                    toggleAnimation()
+                                } label: {
+                                    Image(systemName: isAnimating ? "stop.fill" : "play.fill")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(isAnimating ? .red : .white)
+                                        .frame(width: 34, height: 34)
+                                        .background(.ultraThinMaterial)
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+
+                                // Animation progress
+                                if isAnimating || animationProgress < 1.0 {
+                                    let shotTime = result.effectiveShotTime
+                                    HStack(spacing: 5) {
+                                        Text(String(format: "%.0fs", animationProgress * shotTime))
+                                            .foregroundStyle(.cyan)
+                                        ProgressView(value: animationProgress)
+                                            .tint(.cyan)
+                                            .frame(maxWidth: 90)
+                                        Text(String(format: "%.0fs", shotTime))
+                                            .foregroundStyle(.white.opacity(0.4))
+                                    }
+                                    .font(.system(size: 10, design: .monospaced))
+                                }
 
                                 Spacer()
-
-                                // Bottom: animation controls + legend over gradient fade
-                                VStack(spacing: 8) {
-                                    // Animation controls row
-                                    HStack(spacing: 10) {
-                                        // Play/stop button
-                                        Button {
-                                            toggleAnimation()
-                                        } label: {
-                                            Image(systemName: isAnimating ? "stop.fill" : "play.fill")
-                                                .font(.system(size: 13, weight: .semibold))
-                                                .foregroundStyle(isAnimating ? .red : .white)
-                                                .frame(width: 34, height: 34)
-                                                .background(.ultraThinMaterial)
-                                                .clipShape(Circle())
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        // Animation progress (when playing)
-                                        if isAnimating || animationProgress < 1.0 {
-                                            let shotTime = result.effectiveShotTime
-                                            HStack(spacing: 5) {
-                                                Text(String(format: "%.0fs", animationProgress * shotTime))
-                                                    .foregroundStyle(.cyan)
-                                                ProgressView(value: animationProgress)
-                                                    .tint(.cyan)
-                                                    .frame(maxWidth: 90)
-                                                Text(String(format: "%.0fs", shotTime))
-                                                    .foregroundStyle(.white.opacity(0.4))
-                                            }
-                                            .font(.system(size: 10, design: .monospaced))
-                                        }
-
-                                        Spacer()
-                                    }
-
-                                    // Legend gradient bar
-                                    legendBar
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.bottom, 10)
-                                .background(
-                                    LinearGradient(
-                                        colors: [.clear, .black.opacity(0.7)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
                             }
 
-                            // Gesture hints (centered, fade out)
-                            if showGestureHints {
-                                HStack(spacing: 20) {
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "hand.draw.fill")
-                                            .font(.system(size: 20))
-                                        Text("Drag to rotate")
-                                            .font(.system(size: 10, weight: .medium))
-                                    }
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                            .font(.system(size: 20))
-                                        Text("Pinch to zoom")
-                                            .font(.system(size: 10, weight: .medium))
-                                    }
-                                }
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .transition(.opacity)
-                                .allowsHitTesting(false)
+                            // Cross-section clip sliders (side by side)
+                            HStack(spacing: 12) {
+                                clipSlider(value: $cutX, label: "X Cut")
+                                clipSlider(value: $cutZ, label: "Z Cut")
                             }
 
-                            // Computing spinner
-                            if isComputing {
-                                ProgressView()
-                                    .scaleEffect(0.9)
-                                    .tint(.cyan)
-                                    .padding(14)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(Circle())
+                            // Legend bar
+                            legendBar
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.7)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    }
+
+                    // Gesture hints (centered, fade out)
+                    if showGestureHints {
+                        HStack(spacing: 20) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "hand.draw.fill")
+                                    .font(.system(size: 20))
+                                Text("Drag to rotate")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            VStack(spacing: 4) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 20))
+                                Text("Pinch to zoom")
+                                    .font(.system(size: 10, weight: .medium))
                             }
                         }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                    }
 
-                        // Right slider: X-axis clip
-                        verticalClipSlider(value: $cutX, label: "X", side: .trailing)
+                    // Computing spinner
+                    if isComputing {
+                        ProgressView()
+                            .scaleEffect(0.9)
+                            .tint(.cyan)
+                            .padding(14)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
                     }
 
                 } else {
@@ -554,67 +548,20 @@ struct PuckSimulationView: View {
         .background(color.opacity(0.06))
     }
 
-    // MARK: - Vertical Clip Slider
+    // MARK: - Clip Slider (horizontal)
 
-    private enum SliderSide { case leading, trailing }
-
-    private func verticalClipSlider(value: Binding<Double>, label: String, side: SliderSide) -> some View {
-        VStack(spacing: 4) {
-            // Label at top
-            Text(label)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.5))
-
-            // Vertical slider track
-            GeometryReader { geo in
-                let trackHeight = geo.size.height
-                let knobSize: CGFloat = 22
-                // Invert so dragging down = more cut (lower value)
-                let knobY = (1.0 - value.wrappedValue) * (trackHeight - knobSize)
-
-                ZStack(alignment: .top) {
-                    // Track background
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: 4)
-                        .frame(maxHeight: .infinity)
-
-                    // Filled portion (from top to knob)
-                    VStack(spacing: 0) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.cyan.opacity(0.4))
-                            .frame(width: 4, height: max(0, knobY + knobSize / 2))
-                        Spacer(minLength: 0)
-                    }
-
-                    // Knob
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(Color.cyan.opacity(0.6), lineWidth: 1.5)
-                        )
-                        .frame(width: knobSize, height: knobSize)
-                        .offset(y: knobY)
-                }
-                .frame(maxWidth: .infinity)
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { drag in
-                            let fraction = drag.location.y / trackHeight
-                            value.wrappedValue = max(0, min(1, 1.0 - fraction))
-                        }
-                )
-            }
-            .frame(width: 28)
-
-            // Icon at bottom
+    private func clipSlider(value: Binding<Double>, label: String) -> some View {
+        HStack(spacing: 5) {
             Image(systemName: "scissors")
                 .font(.system(size: 9))
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(.white.opacity(0.4))
+            Text(label)
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 30, alignment: .leading)
+            Slider(value: value, in: 0.0...1.0)
+                .tint(.cyan.opacity(0.5))
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 2)
     }
 
     // MARK: - Parameter Sliders

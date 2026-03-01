@@ -207,7 +207,7 @@ struct PuckCFDSolver {
     // MARK: - Main Simulation
 
     /// Run full 2D axisymmetric puck simulation
-    static func simulate(params: PuckParameters, gridRows: Int = 64, gridCols: Int = 40) -> PuckSimulationResult {
+    static func simulate(params: PuckParameters, gridRows: Int = 128, gridCols: Int = 80) -> PuckSimulationResult {
         let nz = gridRows  // axial divisions (top to bottom)
         let nr = gridCols  // radial divisions (center to wall)
 
