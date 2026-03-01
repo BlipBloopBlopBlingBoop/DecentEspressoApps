@@ -54,6 +54,8 @@ struct PuckSimulationView: View {
     @State private var simulationSerial: Int = 0
     @State private var animationProgress: Double = 1.0
     @State private var isAnimating = false
+    @State private var cutawayFraction: Double = 0.65
+    @State private var showGestureHints = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
@@ -137,7 +139,6 @@ struct PuckSimulationView: View {
         LazyVStack(spacing: 16) {
             basketSelector
             visualizationCard
-            summaryStatsCard
             parameterSliders
         }
         .padding()
@@ -153,11 +154,8 @@ struct PuckSimulationView: View {
                 visualizationCard
                     .frame(maxWidth: .infinity)
 
-                VStack(spacing: 20) {
-                    summaryStatsCard
-                    parameterSliders
-                }
-                .frame(maxWidth: 400)
+                parameterSliders
+                    .frame(maxWidth: 400)
             }
         }
         .padding()
@@ -220,51 +218,149 @@ struct PuckSimulationView: View {
         .analyticsCard()
     }
 
-    // MARK: - Visualization Card
+    // MARK: - Visualization Card (immersive dark layout)
 
     private var visualizationCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "drop.degreesign.fill")
-                    .foregroundStyle(.cyan)
-                Text("Puck Cross-Section")
-                    .font(.headline)
-                Spacer()
+        VStack(spacing: 0) {
+            // 3D visualization with floating overlay controls
+            ZStack {
+                if let result = result {
+                    // Full-bleed 3D scene
+                    Puck3DSceneView(
+                        result: result,
+                        mode: vizMode,
+                        basketSpec: params.basket,
+                        grindSizeMicrons: params.grindSizeMicrons,
+                        animationProgress: animationProgress,
+                        cutawayFraction: cutawayFraction
+                    )
 
-                Button {
-                    toggleAnimation()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: isAnimating ? "stop.fill" : "play.fill")
-                            .font(.system(size: 10))
-                        Text(isAnimating ? "Stop" : "Animate")
-                            .font(.system(size: 10, weight: .medium))
+                    // Floating overlay controls
+                    VStack(spacing: 0) {
+                        // Top: mode picker pills
+                        floatingModePicker
+                            .padding(.top, 10)
+
+                        Spacer()
+
+                        // Bottom: animation, cutaway, legend — over a gradient fade
+                        VStack(spacing: 8) {
+                            // Animation + cutaway controls row
+                            HStack(spacing: 10) {
+                                // Play/stop button
+                                Button {
+                                    toggleAnimation()
+                                } label: {
+                                    Image(systemName: isAnimating ? "stop.fill" : "play.fill")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(isAnimating ? .red : .white)
+                                        .frame(width: 34, height: 34)
+                                        .background(.ultraThinMaterial)
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+
+                                // Animation progress (when playing)
+                                if isAnimating || animationProgress < 1.0 {
+                                    let shotTime = result.effectiveShotTime
+                                    HStack(spacing: 5) {
+                                        Text(String(format: "%.0fs", animationProgress * shotTime))
+                                            .foregroundStyle(.cyan)
+                                        ProgressView(value: animationProgress)
+                                            .tint(.cyan)
+                                            .frame(maxWidth: 90)
+                                        Text(String(format: "%.0fs", shotTime))
+                                            .foregroundStyle(.white.opacity(0.4))
+                                    }
+                                    .font(.system(size: 10, design: .monospaced))
+                                }
+
+                                Spacer()
+
+                                // Cutaway control
+                                HStack(spacing: 5) {
+                                    Image(systemName: "scissors")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.white.opacity(0.5))
+                                    Slider(value: $cutawayFraction, in: 0.15...1.0)
+                                        .tint(.white.opacity(0.4))
+                                        .frame(width: 80)
+                                }
+                            }
+
+                            // Legend gradient bar
+                            legendBar
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.7)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                     }
-                    .foregroundStyle(isAnimating ? .red : .green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background((isAnimating ? Color.red : Color.green).opacity(0.1))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(result == nil)
 
-                Text("CFD")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.cyan.opacity(0.1))
-                    .clipShape(Capsule())
-            }
+                    // Gesture hints (centered, fade out)
+                    if showGestureHints {
+                        HStack(spacing: 20) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "hand.draw.fill")
+                                    .font(.system(size: 20))
+                                Text("Drag to rotate")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            VStack(spacing: 4) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 20))
+                                Text("Pinch to zoom")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                    }
 
-            // Viz mode picker
-            Picker("Mode", selection: $vizMode) {
-                ForEach(PuckVizMode.allCases) { mode in
-                    Label(mode.rawValue, systemImage: mode.icon).tag(mode)
+                    // Computing spinner
+                    if isComputing {
+                        ProgressView()
+                            .scaleEffect(0.9)
+                            .tint(.cyan)
+                            .padding(14)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+
+                } else {
+                    // Loading state
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .tint(.cyan)
+                        Text("Running CFD simulation...")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .background(Color(red: 0.04, green: 0.04, blue: 0.07))
                 }
             }
-            .pickerStyle(.segmented)
+            .aspectRatio(isCompact ? 0.9 : 1.0, contentMode: .fit)
+            .frame(minHeight: isCompact ? 320 : 380)
+            .background(Color(red: 0.04, green: 0.04, blue: 0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                    withAnimation(.easeOut(duration: 0.8)) {
+                        showGestureHints = false
+                    }
+                }
+            }
 
             // Live mode banner
             if isLiveMode {
@@ -272,7 +368,7 @@ struct PuckSimulationView: View {
                     Circle()
                         .fill(machineStore.machineState.state == .brewing ? .green : .orange)
                         .frame(width: 8, height: 8)
-                    Text(machineStore.machineState.state == .brewing ? "Live — Brewing" : "Live — Waiting for shot")
+                    Text(machineStore.machineState.state == .brewing ? "Live — Brewing" : "Live — Waiting")
                         .font(.caption)
                         .fontWeight(.medium)
                     Spacer()
@@ -282,61 +378,95 @@ struct PuckSimulationView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.green.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.green.opacity(0.06))
             }
 
-            // 3D Visualization
-            if let result = result {
-                Puck3DSceneView(
-                    result: result,
-                    mode: vizMode,
-                    basketSpec: params.basket,
-                    grindSizeMicrons: params.grindSizeMicrons,
-                    isComputing: isComputing,
-                    animationProgress: animationProgress
-                )
-                .aspectRatio(1.1, contentMode: .fit)
-                .frame(minHeight: isCompact ? 260 : 320)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                // Animation progress bar
-                if animationProgress < 1.0 {
-                    let shotTime = result.effectiveShotTime
-                    HStack(spacing: 8) {
-                        Text(String(format: "%.1fs", animationProgress * shotTime))
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.cyan)
-                        ProgressView(value: animationProgress)
-                            .tint(.cyan)
-                        Text(String(format: "%.0fs", shotTime))
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
+            // Compact stats row
+            if let r = result {
+                HStack(spacing: 0) {
+                    compactStat(
+                        value: String(format: "%.1f", r.totalFlowRate * min(1.0, animationProgress * 2.5)),
+                        unit: "ml/s", label: "Flow Rate", color: .cyan
+                    )
+                    statDivider
+                    compactStat(
+                        value: String(format: "%.0f", r.effectiveShotTime),
+                        unit: "s", label: "Shot Time",
+                        color: (r.effectiveShotTime >= 24 && r.effectiveShotTime <= 32) ? .green : .orange
+                    )
+                    statDivider
+                    compactStat(
+                        value: String(format: "%.0f%%", r.channelingRisk * 100),
+                        unit: "", label: "Channel Risk",
+                        color: r.channelingRisk > 0.5 ? .red : (r.channelingRisk > 0.25 ? .yellow : .green)
+                    )
+                    statDivider
+                    compactStat(
+                        value: String(format: "%.0f%%", r.uniformityIndex * 100),
+                        unit: "", label: "Uniformity",
+                        color: r.uniformityIndex > 0.7 ? .green : .orange
+                    )
                 }
+                .padding(.vertical, 10)
 
-                // Legend bar
-                legendBar
-            } else {
-                VStack(spacing: 8) {
-                    ProgressView()
-                        .tint(.cyan)
-                    Text("Running CFD simulation...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                // Channeling advisory
+                if r.channelingRisk > 0.5 {
+                    channelingAdvisory(
+                        icon: "exclamationmark.triangle.fill", color: .red,
+                        text: "High channeling risk. Improve distribution (WDT), reduce dose, or grind coarser."
+                    )
+                } else if r.channelingRisk > 0.25 {
+                    channelingAdvisory(
+                        icon: "info.circle.fill", color: .yellow,
+                        text: "Moderate channeling risk. Consider a more thorough WDT."
+                    )
                 }
-                .frame(maxWidth: .infinity, minHeight: 200)
             }
         }
-        .analyticsCard()
+        .background(Color(red: 0.06, green: 0.06, blue: 0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+        )
     }
 
+    // MARK: - Floating Mode Picker
+
+    private var floatingModePicker: some View {
+        HStack(spacing: 3) {
+            ForEach(PuckVizMode.allCases) { mode in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        vizMode = mode
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 9))
+                        Text(mode.rawValue)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(vizMode == mode ? .white : .white.opacity(0.45))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(vizMode == mode ? Color.cyan.opacity(0.25) : Color.clear)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+    }
+
+    // MARK: - Legend Bar
+
     private var legendBar: some View {
-        VStack(spacing: 4) {
-            // Gradient bar
+        VStack(spacing: 3) {
             GeometryReader { geo in
                 Canvas { context, size in
                     let steps = 60
@@ -350,112 +480,61 @@ struct PuckSimulationView: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 3))
             }
-            .frame(height: 12)
+            .frame(height: 8)
 
             HStack {
                 Text(vizMode.legend.low)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.5))
                 Spacer()
                 Text(vizMode.legend.high)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.white.opacity(0.5))
             }
         }
     }
 
-    // MARK: - Summary Stats
+    // MARK: - Compact Stat Helpers
 
-    private var summaryStatsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "chart.bar.doc.horizontal.fill")
-                    .foregroundStyle(.green)
-                Text("Simulation Results")
-                    .font(.headline)
-            }
-
-            if let r = result {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    SimStat(
-                        label: "Flow Rate",
-                        value: String(format: "%.1f ml/s", r.totalFlowRate * min(1.0, animationProgress * 2.5)),
-                        icon: "drop.fill",
-                        color: .cyan
-                    )
-                    SimStat(
-                        label: "Channeling Risk",
-                        value: String(format: "%.0f%%", r.channelingRisk * 100),
-                        icon: "exclamationmark.triangle.fill",
-                        color: r.channelingRisk > 0.5 ? .red : (r.channelingRisk > 0.25 ? .yellow : .green)
-                    )
-                    SimStat(
-                        label: "Uniformity",
-                        value: String(format: "%.0f%%", r.uniformityIndex * 100),
-                        icon: "circle.grid.3x3.fill",
-                        color: r.uniformityIndex > 0.7 ? .green : .orange
-                    )
-                    SimStat(
-                        label: "Est. Shot Time",
-                        value: String(format: "%.0fs", r.effectiveShotTime),
-                        icon: "timer",
-                        color: (r.effectiveShotTime >= 24 && r.effectiveShotTime <= 32) ? .green : .orange
-                    )
-                    SimStat(
-                        label: "Puck Height",
-                        value: String(format: "%.1f mm", params.puckHeightMM),
-                        icon: "ruler.fill",
-                        color: .purple
-                    )
-                    SimStat(
-                        label: "Porosity",
-                        value: String(format: "%.1f%%", params.porosity * 100),
-                        icon: "circle.dotted",
-                        color: .indigo
-                    )
+    private func compactStat(value: String, unit: String, label: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 2) {
+                Text(value)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
                 }
-
-                // Channeling advisory
-                if r.channelingRisk > 0.5 {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Text("High channeling risk. Improve distribution (WDT), reduce dose, or grind coarser.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(Color.red.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else if r.channelingRisk > 0.25 {
-                    HStack(spacing: 8) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundStyle(.yellow)
-                        Text("Moderate channeling risk at edges. Consider a more thorough WDT.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(Color.yellow.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Good flow uniformity. Even extraction predicted.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(Color.green.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 100)
             }
+            .foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.4))
         }
-        .analyticsCard()
+        .frame(maxWidth: .infinity)
+    }
+
+    private var statDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 1, height: 28)
+    }
+
+    private func channelingAdvisory(icon: String, color: Color, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.caption)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.06))
     }
 
     // MARK: - Parameter Sliders
@@ -751,30 +830,6 @@ struct BasketChip: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct SimStat: View {
-    let label: String
-    let value: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.bold)
-                .monospacedDigit()
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
     }
 }
 
