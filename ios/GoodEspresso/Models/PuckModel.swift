@@ -93,6 +93,11 @@ struct PuckParameters {
         return volumeCM3 / areaCM2 * 10.0  // cm -> mm
     }
 
+    /// How full the basket is (percent). >100% means coffee overflows the basket.
+    var puckFillPercent: Double {
+        puckHeightMM / basket.depth * 100
+    }
+
     // Effective porosity after tamping
     var porosity: Double {
         // Base porosity for randomly packed spheres ~0.40
