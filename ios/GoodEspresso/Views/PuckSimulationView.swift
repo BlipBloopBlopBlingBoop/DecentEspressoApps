@@ -239,7 +239,7 @@ struct PuckSimulationView: View {
 
                     // Floating overlay controls
                     VStack(spacing: 0) {
-                        // Top: mode picker pills
+                        // Top: mode picker
                         floatingModePicker
                             .padding(.top, 10)
 
@@ -247,9 +247,8 @@ struct PuckSimulationView: View {
 
                         // Bottom controls over gradient fade
                         VStack(spacing: 6) {
-                            // Animation controls row
+                            // Animation row
                             HStack(spacing: 10) {
-                                // Play/stop button
                                 Button {
                                     toggleAnimation()
                                 } label: {
@@ -262,7 +261,6 @@ struct PuckSimulationView: View {
                                 }
                                 .buttonStyle(.plain)
 
-                                // Animation progress
                                 if isAnimating || animationProgress < 1.0 {
                                     let shotTime = result.effectiveShotTime
                                     HStack(spacing: 5) {
@@ -280,13 +278,9 @@ struct PuckSimulationView: View {
                                 Spacer()
                             }
 
-                            // Cross-section clip sliders (side by side)
-                            HStack(spacing: 12) {
-                                clipSlider(value: $cutX, label: "X Cut")
-                                clipSlider(value: $cutZ, label: "Z Cut")
-                            }
+                            // Z cut slider (horizontal, full width at bottom)
+                            clipSlider(value: $cutZ, label: "Front")
 
-                            // Legend bar
                             legendBar
                         }
                         .padding(.horizontal, 12)
@@ -300,7 +294,27 @@ struct PuckSimulationView: View {
                         )
                     }
 
-                    // Gesture hints (centered, fade out)
+                    // Right edge: vertical X cut slider
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 2) {
+                            Image(systemName: "scissors")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.white.opacity(0.35))
+                            Text("Side")
+                                .font(.system(size: 7, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.35))
+                            Slider(value: $cutX, in: 0.0...1.0)
+                                .tint(.cyan.opacity(0.4))
+                                .frame(width: 110)
+                                .rotationEffect(.degrees(-90))
+                                .frame(width: 24, height: 110)
+                        }
+                        .padding(.trailing, 4)
+                        .padding(.top, 50)  // below mode picker
+                    }
+
+                    // Gesture hints
                     if showGestureHints {
                         HStack(spacing: 20) {
                             VStack(spacing: 4) {
@@ -325,7 +339,6 @@ struct PuckSimulationView: View {
                         .allowsHitTesting(false)
                     }
 
-                    // Computing spinner
                     if isComputing {
                         ProgressView()
                             .scaleEffect(0.9)
@@ -336,7 +349,6 @@ struct PuckSimulationView: View {
                     }
 
                 } else {
-                    // Loading state
                     VStack(spacing: 8) {
                         ProgressView()
                             .tint(.cyan)
