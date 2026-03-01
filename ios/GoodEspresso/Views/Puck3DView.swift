@@ -13,65 +13,24 @@ import SceneKit
 
 // MARK: - SwiftUI Wrapper
 
+/// Minimal 3D puck scene — all overlay controls are in the parent view.
 struct Puck3DSceneView: View {
     let result: PuckSimulationResult
     let mode: PuckVizMode
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
-    let isComputing: Bool
     var animationProgress: Double = 1.0
-
-    @State private var cutawayFraction: Double = 0.75
+    var cutawayFraction: Double = 0.65
 
     var body: some View {
-        ZStack {
-            PuckSceneRepresentable(
-                result: result,
-                mode: mode,
-                basketSpec: basketSpec,
-                grindSizeMicrons: grindSizeMicrons,
-                cutawayFraction: cutawayFraction,
-                animationProgress: animationProgress
-            )
-            .background(Color.black)
-
-            // Computing overlay
-            if isComputing {
-                VStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                        .tint(.cyan)
-                    Text("Simulating...")
-                        .font(.caption2)
-                        .foregroundStyle(.cyan)
-                }
-                .padding(12)
-                .background(.ultraThinMaterial.opacity(0.8))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-
-            // Cutaway slider overlay
-            VStack {
-                Spacer()
-                HStack(spacing: 8) {
-                    Image(systemName: "circle.lefthalf.strikethrough")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                    Slider(value: $cutawayFraction, in: 0.15...1.0)
-                        .tint(.cyan.opacity(0.8))
-                    Text("\(Int(cutawayFraction * 100))%")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .frame(width: 30)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.black.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-            }
-        }
+        PuckSceneRepresentable(
+            result: result,
+            mode: mode,
+            basketSpec: basketSpec,
+            grindSizeMicrons: grindSizeMicrons,
+            cutawayFraction: cutawayFraction,
+            animationProgress: animationProgress
+        )
     }
 }
 
@@ -158,7 +117,8 @@ enum PuckSceneBuilder {
 
         let nz = result.gridRows
         let nr = result.gridCols
-        let thetaSegments = 120
+        // Fewer segments during animation for smoother frame rate
+        let thetaSegments = animationProgress < 1.0 ? 60 : 120
         let cutAngle = Float(cutawayFraction * 2.0 * .pi)
 
         let rawField = selectField(result: result, mode: mode)
@@ -304,15 +264,11 @@ enum PuckSceneBuilder {
         addBasketRim(to: scene.rootNode, radius: rTopOuter + 0.02, y: puckHeight / 2,
                      cutAngle: cutAngle, segments: thetaSegments)
 
-        // Grind particles (scattered spheres on cutaway face)
-        if cutawayFraction < 0.98 {
+        // Grind particles and flow streamlines — skip during animation for performance
+        if cutawayFraction < 0.98 && animationProgress >= 1.0 {
             addGrindParticles(to: scene.rootNode, nz: nz, nr: nr,
                               puckHeight: puckHeight, radiusAt: radiusAt,
                               grindMicrons: grindSizeMicrons, field: field, mode: mode)
-        }
-
-        // Flow streamlines (shown on cutaway in all modes for context)
-        if cutawayFraction < 0.98 {
             addFlowStreamlines(to: scene.rootNode, result: result,
                                puckHeight: puckHeight, radiusAt: radiusAt)
         }
@@ -632,14 +588,17 @@ enum PuckSceneBuilder {
         let nz = field.count
         guard nz > 0 else { return field }
 
+        // Minimum base value so the puck body is always visible (not pure black / hollow)
+        let baseValue: Double = 0.05
+
         // Water front reaches bottom at progress ≈ 0.65, then values deepen to full
         let frontRow = progress * Double(nz) / 0.65
 
         return field.enumerated().map { (z, row) in
             let zD = Double(z)
             if zD > frontRow + 2.0 {
-                // Below the water front: no water yet
-                return [Double](repeating: 0, count: row.count)
+                // Below the water front: show dry puck base (subtle, not black)
+                return [Double](repeating: baseValue, count: row.count)
             } else {
                 // Above or at front: ramp based on time since water arrived
                 let timeSinceArrival = max(0, frontRow - zD) / Double(nz)
@@ -657,7 +616,7 @@ enum PuckSceneBuilder {
                     rampUp = min(1.0, timeSinceArrival * 3.0)
                 }
                 let factor = rampUp * frontEdge
-                return row.map { $0 * factor }
+                return row.map { max(baseValue, $0 * factor) }
             }
         }
     }
