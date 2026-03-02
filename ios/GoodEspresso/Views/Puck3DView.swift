@@ -3,14 +3,17 @@
 //  Good Espresso
 //
 //  Interactive 3D puck visualization using SceneKit.
-//  Renders CFD simulation as a cutaway cylinder with per-cell coloring,
-//  accurate tapered basket geometry, metallic basket shell, grind particle
-//  indicators, and orbit camera.
+//  Renders CFD simulation as a cutaway cylinder with per-vertex
+//  interpolated heatmap coloring, accurate tapered basket geometry,
+//  metallic basket shell (headspace only), and orbit camera.
 //
 //  Cutaway uses two orthogonal Cartesian clip planes (X and Z).
 //  The SCNScene is created once and persists across updates — only the
 //  content node is swapped — so the camera controller's zoom/orbit state
 //  is never lost during animation playback.
+//
+//  Color computation uses direct Float arithmetic (no SwiftUI Color /
+//  UIColor round-trip) for ~100K vertices per frame on M-series hardware.
 //
 
 import SwiftUI
@@ -29,22 +32,15 @@ struct Puck3DSceneView: View {
 
     var body: some View {
         PuckSceneRepresentable(
-            result: result,
-            mode: mode,
-            basketSpec: basketSpec,
+            result: result, mode: mode, basketSpec: basketSpec,
             grindSizeMicrons: grindSizeMicrons,
-            cutX: cutX,
-            cutZ: cutZ,
+            cutX: cutX, cutZ: cutZ,
             animationProgress: animationProgress
         )
     }
 }
 
 // MARK: - Platform Representables
-//
-// The SCNScene is created once in makeUIView/makeNSView. On subsequent
-// updates only the "puckContent" child node is removed and re-added,
-// so the SCNView camera controller state (orbit, zoom) persists.
 
 #if canImport(UIKit)
 struct PuckSceneRepresentable: UIViewRepresentable {
@@ -57,32 +53,27 @@ struct PuckSceneRepresentable: UIViewRepresentable {
     var animationProgress: Double = 1.0
 
     func makeUIView(context: Context) -> SCNView {
-        let scnView = SCNView()
-        scnView.allowsCameraControl = true
-        scnView.autoenablesDefaultLighting = false
-        scnView.backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
-        scnView.antialiasingMode = .multisampling4X
-
+        let v = SCNView()
+        v.allowsCameraControl = true
+        v.autoenablesDefaultLighting = false
+        v.backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+        v.antialiasingMode = .multisampling4X
         let scene = PuckSceneBuilder.makeSceneShell()
-        let content = PuckSceneBuilder.buildContentNode(
+        scene.rootNode.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
             grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
-            animationProgress: animationProgress
-        )
-        scene.rootNode.addChildNode(content)
-        scnView.scene = scene
-        return scnView
+            animationProgress: animationProgress))
+        v.scene = scene
+        return v
     }
 
-    func updateUIView(_ scnView: SCNView, context: Context) {
-        guard let root = scnView.scene?.rootNode else { return }
+    func updateUIView(_ v: SCNView, context: Context) {
+        guard let root = v.scene?.rootNode else { return }
         root.childNode(withName: PuckSceneBuilder.contentNodeName, recursively: false)?.removeFromParentNode()
-        let content = PuckSceneBuilder.buildContentNode(
+        root.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
             grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
-            animationProgress: animationProgress
-        )
-        root.addChildNode(content)
+            animationProgress: animationProgress))
     }
 }
 #elseif canImport(AppKit)
@@ -96,32 +87,27 @@ struct PuckSceneRepresentable: NSViewRepresentable {
     var animationProgress: Double = 1.0
 
     func makeNSView(context: Context) -> SCNView {
-        let scnView = SCNView()
-        scnView.allowsCameraControl = true
-        scnView.autoenablesDefaultLighting = false
-        scnView.layer?.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1).cgColor
-        scnView.antialiasingMode = .multisampling4X
-
+        let v = SCNView()
+        v.allowsCameraControl = true
+        v.autoenablesDefaultLighting = false
+        v.layer?.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1).cgColor
+        v.antialiasingMode = .multisampling4X
         let scene = PuckSceneBuilder.makeSceneShell()
-        let content = PuckSceneBuilder.buildContentNode(
+        scene.rootNode.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
             grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
-            animationProgress: animationProgress
-        )
-        scene.rootNode.addChildNode(content)
-        scnView.scene = scene
-        return scnView
+            animationProgress: animationProgress))
+        v.scene = scene
+        return v
     }
 
-    func updateNSView(_ scnView: SCNView, context: Context) {
-        guard let root = scnView.scene?.rootNode else { return }
+    func updateNSView(_ v: SCNView, context: Context) {
+        guard let root = v.scene?.rootNode else { return }
         root.childNode(withName: PuckSceneBuilder.contentNodeName, recursively: false)?.removeFromParentNode()
-        let content = PuckSceneBuilder.buildContentNode(
+        root.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
             grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
-            animationProgress: animationProgress
-        )
-        root.addChildNode(content)
+            animationProgress: animationProgress))
     }
 }
 #endif
@@ -132,12 +118,11 @@ enum PuckSceneBuilder {
 
     static let contentNodeName = "puckContent"
 
-    // MARK: Persistent scene shell (camera + lights — created once)
+    // MARK: Persistent scene shell
 
     static func makeSceneShell() -> SCNScene {
         let scene = SCNScene()
         scene.background.contents = pColor(0.04, 0.04, 0.07)
-
         addLighting(to: scene.rootNode)
 
         let cam = SCNNode()
@@ -149,19 +134,17 @@ enum PuckSceneBuilder {
         cam.position = SCNVector3(1.4, 1.1, 1.8)
         cam.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(cam)
-
         return scene
     }
 
-    // MARK: Content node (rebuilt each update)
+    // MARK: Content node
 
     static func buildContentNode(
         result: PuckSimulationResult,
         mode: PuckVizMode,
         basketSpec: BasketSpec,
         grindSizeMicrons: Double,
-        cutX: Double,
-        cutZ: Double,
+        cutX: Double, cutZ: Double,
         animationProgress: Double = 1.0
     ) -> SCNNode {
         let root = SCNNode()
@@ -169,373 +152,339 @@ enum PuckSceneBuilder {
 
         let nz = result.gridRows
         let nr = result.gridCols
-        let isAnimating = animationProgress < 1.0
-        let thetaSegments = isAnimating ? 120 : 180
+        let isAnim = animationProgress < 1.0
+        let thetaSeg = isAnim ? 120 : 180
 
         let rawField = selectField(result: result, mode: mode)
         let field = applyAnimationProgress(to: rawField, progress: animationProgress, mode: mode)
 
-        // Basket geometry
-        let topRadius: Float = 1.0
-        let taperRatio: Float = basketSpec.hasBackPressureValve ? 0.96 : 0.93
-        let bottomRadius: Float = topRadius * taperRatio
-        let lipFlare: Float = 0.03
+        let topR: Float = 1.0
+        let taper: Float = basketSpec.hasBackPressureValve ? 0.96 : 0.93
+        let botR: Float = topR * taper
+        let lipF: Float = 0.03
+        let pH: Float = Float(basketSpec.depth / basketSpec.diameter) * 2.0
+        let dz = pH / Float(nz)
+        let xC = Float(cutX) * topR
+        let zC = Float(cutZ) * topR
 
-        let puckHeight: Float = Float(basketSpec.depth / basketSpec.diameter) * 2.0
-        let dz = puckHeight / Float(nz)
+        // MARK: Mesh buffers
 
-        let xClip = Float(cutX) * topRadius
-        let zClip = Float(cutZ) * topRadius
+        var verts: [SCNVector3] = []
+        var norms: [SCNVector3] = []
+        var cols: [SIMD4<Float>] = []
+        var idxs: [UInt32] = []
 
-        // MARK: Build puck mesh
-
-        var vertices: [SCNVector3] = []
-        var normals: [SCNVector3] = []
-        var colors: [SIMD4<Float>] = []
-        var indices: [UInt32] = []
-
-        func addQuad(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3, _ v3: SCNVector3,
-                     normal: SCNVector3, color: SIMD4<Float>) {
-            let base = UInt32(vertices.count)
-            vertices.append(contentsOf: [v0, v1, v2, v3])
-            normals.append(contentsOf: [normal, normal, normal, normal])
-            colors.append(contentsOf: [color, color, color, color])
-            indices.append(contentsOf: [base, base+1, base+2, base, base+2, base+3])
+        // Flat-shaded quad (same color all 4 verts)
+        func addQ(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3, _ v3: SCNVector3,
+                  n: SCNVector3, c: SIMD4<Float>) {
+            let b = UInt32(verts.count)
+            verts += [v0, v1, v2, v3]; norms += [n, n, n, n]; cols += [c, c, c, c]
+            idxs += [b, b+1, b+2, b, b+2, b+3]
         }
 
-        func radiusAt(zIndex: Int) -> Float {
-            let zFrac = Float(zIndex) / Float(nz)
-            let lip: Float = zFrac < 0.15 ? lipFlare * (1.0 - zFrac / 0.15) : 0
-            return topRadius + (bottomRadius - topRadius) * zFrac + lip
+        // Per-vertex colored quad (smooth interpolation)
+        func addQI(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3, _ v3: SCNVector3,
+                   n: SCNVector3, c0: SIMD4<Float>, c1: SIMD4<Float>, c2: SIMD4<Float>, c3: SIMD4<Float>) {
+            let b = UInt32(verts.count)
+            verts += [v0, v1, v2, v3]; norms += [n, n, n, n]; cols += [c0, c1, c2, c3]
+            idxs += [b, b+1, b+2, b, b+2, b+3]
         }
 
-        let dTheta = Float(2.0 * .pi) / Float(thetaSegments)
+        func rAt(_ zi: Int) -> Float {
+            let f = Float(zi) / Float(nz)
+            let lip: Float = f < 0.15 ? lipF * (1.0 - f / 0.15) : 0
+            return topR + (botR - topR) * f + lip
+        }
 
-        // Outer surface
+        let dT = Float(2.0 * .pi) / Float(thetaSeg)
+
+        // MARK: Outer surface — per-vertex z-interpolated colors
+
         for z in 0..<nz {
-            let r = nr - 1
-            let val = field[z][r]
-            let col = colorSIMD(val, mode: mode)
-            let yTop = puckHeight / 2 - Float(z) * dz
-            let yBot = yTop - dz
-            let rTop = radiusAt(zIndex: z)
-            let rBot = radiusAt(zIndex: z + 1)
+            let valT = field[z][nr - 1]
+            let valB = field[min(z + 1, nz - 1)][nr - 1]
+            let cT = colorSIMD(valT, mode: mode)
+            let cB = colorSIMD(valB, mode: mode)
+            let yT = pH / 2 - Float(z) * dz
+            let yB = yT - dz
+            let rT = rAt(z), rB = rAt(z + 1)
 
-            for t in 0..<thetaSegments {
-                let theta0 = Float(t) * dTheta
-                let theta1 = theta0 + dTheta
-                let midTheta = (theta0 + theta1) / 2
-                let xMid = rTop * cos(midTheta)
-                let zMid = rTop * sin(midTheta)
-                guard xMid <= xClip || cutX >= 0.99 else { continue }
-                guard zMid <= zClip || cutZ >= 0.99 else { continue }
+            for t in 0..<thetaSeg {
+                let t0 = Float(t) * dT, t1 = t0 + dT
+                let mid = (t0 + t1) / 2
+                guard rT * cos(mid) <= xC || cutX >= 0.99 else { continue }
+                guard rT * sin(mid) <= zC || cutZ >= 0.99 else { continue }
 
-                addQuad(
-                    SCNVector3(rTop * cos(theta0), yTop, rTop * sin(theta0)),
-                    SCNVector3(rTop * cos(theta1), yTop, rTop * sin(theta1)),
-                    SCNVector3(rBot * cos(theta1), yBot, rBot * sin(theta1)),
-                    SCNVector3(rBot * cos(theta0), yBot, rBot * sin(theta0)),
-                    normal: SCNVector3(cos(midTheta), 0, sin(midTheta)),
-                    color: col
+                addQI(
+                    SCNVector3(rT*cos(t0), yT, rT*sin(t0)),
+                    SCNVector3(rT*cos(t1), yT, rT*sin(t1)),
+                    SCNVector3(rB*cos(t1), yB, rB*sin(t1)),
+                    SCNVector3(rB*cos(t0), yB, rB*sin(t0)),
+                    n: SCNVector3(cos(mid), 0, sin(mid)),
+                    c0: cT, c1: cT, c2: cB, c3: cB
                 )
             }
         }
 
-        // Top face
-        let rTopOuter = radiusAt(zIndex: 0)
+        // MARK: Top face
+
+        let rTO = rAt(0)
         for r in 0..<nr {
-            let val = field[0][r]
-            let col = colorSIMD(val, mode: mode)
-            let rInner = Float(r) / Float(nr) * rTopOuter
-            let rOuter = Float(r + 1) / Float(nr) * rTopOuter
-            let y = puckHeight / 2
-            for t in 0..<thetaSegments {
-                let theta0 = Float(t) * dTheta
-                let theta1 = theta0 + dTheta
-                let midTheta = (theta0 + theta1) / 2
-                let rMid = (rInner + rOuter) / 2
-                let xMid = rMid * cos(midTheta)
-                let zMid = rMid * sin(midTheta)
-                guard xMid <= xClip || cutX >= 0.99 else { continue }
-                guard zMid <= zClip || cutZ >= 0.99 else { continue }
-
-                addQuad(
-                    SCNVector3(rInner * cos(theta0), y, rInner * sin(theta0)),
-                    SCNVector3(rOuter * cos(theta0), y, rOuter * sin(theta0)),
-                    SCNVector3(rOuter * cos(theta1), y, rOuter * sin(theta1)),
-                    SCNVector3(rInner * cos(theta1), y, rInner * sin(theta1)),
-                    normal: SCNVector3(0, 1, 0),
-                    color: col
-                )
+            let c = colorSIMD(field[0][r], mode: mode)
+            let ri = Float(r) / Float(nr) * rTO
+            let ro = Float(r + 1) / Float(nr) * rTO
+            let y = pH / 2
+            for t in 0..<thetaSeg {
+                let t0 = Float(t) * dT, t1 = t0 + dT
+                let mid = (t0 + t1) / 2
+                let rm = (ri + ro) / 2
+                guard rm * cos(mid) <= xC || cutX >= 0.99 else { continue }
+                guard rm * sin(mid) <= zC || cutZ >= 0.99 else { continue }
+                addQ(SCNVector3(ri*cos(t0), y, ri*sin(t0)),
+                     SCNVector3(ro*cos(t0), y, ro*sin(t0)),
+                     SCNVector3(ro*cos(t1), y, ro*sin(t1)),
+                     SCNVector3(ri*cos(t1), y, ri*sin(t1)),
+                     n: SCNVector3(0, 1, 0), c: c)
             }
         }
 
-        // Bottom face
-        let rBotOuter = radiusAt(zIndex: nz)
+        // MARK: Bottom face
+
+        let rBO = rAt(nz)
         for r in 0..<nr {
-            let val = field[nz - 1][r]
-            let col = colorSIMD(val, mode: mode)
-            let rInner = Float(r) / Float(nr) * rBotOuter
-            let rOuter = Float(r + 1) / Float(nr) * rBotOuter
-            let y = -puckHeight / 2
-            for t in 0..<thetaSegments {
-                let theta0 = Float(t) * dTheta
-                let theta1 = theta0 + dTheta
-                let midTheta = (theta0 + theta1) / 2
-                let rMid = (rInner + rOuter) / 2
-                let xMid = rMid * cos(midTheta)
-                let zMid = rMid * sin(midTheta)
-                guard xMid <= xClip || cutX >= 0.99 else { continue }
-                guard zMid <= zClip || cutZ >= 0.99 else { continue }
-
-                addQuad(
-                    SCNVector3(rInner * cos(theta1), y, rInner * sin(theta1)),
-                    SCNVector3(rOuter * cos(theta1), y, rOuter * sin(theta1)),
-                    SCNVector3(rOuter * cos(theta0), y, rOuter * sin(theta0)),
-                    SCNVector3(rInner * cos(theta0), y, rInner * sin(theta0)),
-                    normal: SCNVector3(0, -1, 0),
-                    color: col
-                )
+            let c = colorSIMD(field[nz - 1][r], mode: mode)
+            let ri = Float(r) / Float(nr) * rBO
+            let ro = Float(r + 1) / Float(nr) * rBO
+            let y = -pH / 2
+            for t in 0..<thetaSeg {
+                let t0 = Float(t) * dT, t1 = t0 + dT
+                let mid = (t0 + t1) / 2
+                let rm = (ri + ro) / 2
+                guard rm * cos(mid) <= xC || cutX >= 0.99 else { continue }
+                guard rm * sin(mid) <= zC || cutZ >= 0.99 else { continue }
+                addQ(SCNVector3(ri*cos(t1), y, ri*sin(t1)),
+                     SCNVector3(ro*cos(t1), y, ro*sin(t1)),
+                     SCNVector3(ro*cos(t0), y, ro*sin(t0)),
+                     SCNVector3(ri*cos(t0), y, ri*sin(t0)),
+                     n: SCNVector3(0, -1, 0), c: c)
             }
         }
 
-        // Clip-plane cross-section faces
+        // MARK: Clip faces — bilinear interpolated colors + subtle grain noise
+
         if cutX < 0.99 {
-            addClipFace(clipPos: xClip, axis: .x, otherClipPos: zClip, otherCutVal: cutZ,
+            addClipFace(clipPos: xC, axis: .x, otherClipPos: zC, otherCut: cutZ,
                         nz: nz, nr: nr, field: field, mode: mode,
-                        puckHeight: puckHeight, dz: dz, topRadius: topRadius, radiusAt: radiusAt,
-                        vertices: &vertices, normals: &normals, colors: &colors, indices: &indices)
+                        pH: pH, dz: dz, topR: topR, rAt: rAt,
+                        verts: &verts, norms: &norms, cols: &cols, idxs: &idxs)
         }
         if cutZ < 0.99 {
-            addClipFace(clipPos: zClip, axis: .z, otherClipPos: xClip, otherCutVal: cutX,
+            addClipFace(clipPos: zC, axis: .z, otherClipPos: xC, otherCut: cutX,
                         nz: nz, nr: nr, field: field, mode: mode,
-                        puckHeight: puckHeight, dz: dz, topRadius: topRadius, radiusAt: radiusAt,
-                        vertices: &vertices, normals: &normals, colors: &colors, indices: &indices)
+                        pH: pH, dz: dz, topR: topR, rAt: rAt,
+                        verts: &verts, norms: &norms, cols: &cols, idxs: &idxs)
         }
 
-        // Puck geometry node
-        let puckNode = SCNNode(geometry: buildGeometry(
-            vertices: vertices, normals: normals, colors: colors, indices: indices
-        ))
-        root.addChildNode(puckNode)
+        // Build puck node with coffee-like material
+        let puckGeo = buildGeometry(vertices: verts, normals: norms, colors: cols, indices: idxs)
+        let puckMat = SCNMaterial()
+        puckMat.lightingModel = .physicallyBased
+        puckMat.roughness.contents = 0.88   // matte like tamped coffee
+        puckMat.metalness.contents = 0.02   // non-metallic organic surface
+        puckGeo.materials = [puckMat]
+        root.addChildNode(SCNNode(geometry: puckGeo))
 
-        // Basket shell
-        let shellExtraTop: Float = puckHeight * 0.25
-        addBasketShell(to: root, nz: nz, puckHeight: puckHeight,
-                       topRadius: topRadius, bottomRadius: bottomRadius,
-                       shellExtraTop: shellExtraTop,
-                       xClip: xClip, zClip: zClip,
-                       cutX: cutX, cutZ: cutZ, thetaSegments: thetaSegments)
+        // MARK: Basket shell — headspace wall only (above puck)
+        let shellExtra: Float = pH * 0.25
+        addBasketShell(to: root, puckHeight: pH, topR: topR, botR: botR,
+                       shellExtra: shellExtra, rAt: rAt,
+                       xC: xC, zC: zC, cutX: cutX, cutZ: cutZ, tSeg: thetaSeg)
+        addBasketRim(to: root, radius: topR + 0.04, y: pH / 2 + shellExtra)
 
-        // Basket rim torus at top of shell
-        addBasketRim(to: root, radius: topRadius + 0.04,
-                     y: puckHeight / 2 + shellExtraTop)
-
-        // Grind particles & streamlines — skip during animation
-        if (cutX < 0.99 || cutZ < 0.99) && !isAnimating {
-            addGrindParticles(to: root, nz: nz, nr: nr,
-                              puckHeight: puckHeight, radiusAt: radiusAt,
-                              grindMicrons: grindSizeMicrons, field: field, mode: mode,
-                              xClip: xClip, zClip: zClip, cutX: cutX, cutZ: cutZ)
-            addFlowStreamlines(to: root, result: result,
-                               puckHeight: puckHeight, radiusAt: radiusAt,
-                               xClip: xClip, zClip: zClip, cutX: cutX, cutZ: cutZ)
+        // Decorations (skip during animation)
+        if (cutX < 0.99 || cutZ < 0.99) && !isAnim {
+            addGrindParticles(to: root, nz: nz, nr: nr, pH: pH, rAt: rAt,
+                              grind: grindSizeMicrons, field: field, mode: mode,
+                              xC: xC, zC: zC, cutX: cutX, cutZ: cutZ)
+            addFlowStreamlines(to: root, result: result, pH: pH, rAt: rAt,
+                               xC: xC, zC: zC, cutX: cutX, cutZ: cutZ)
         }
 
-        // Labels
         addLabel(to: root, text: "Water In  \u{2193}",
-                 position: SCNVector3(0, puckHeight / 2 + shellExtraTop + 0.1, 0.3))
+                 position: SCNVector3(0, pH / 2 + shellExtra + 0.1, 0.3))
         addLabel(to: root, text: "\u{2191}  Basket Exit",
-                 position: SCNVector3(0, -puckHeight / 2 - 0.15, 0.3))
+                 position: SCNVector3(0, -pH / 2 - 0.15, 0.3))
 
         return root
     }
 
-    // MARK: - Clip Axis
+    // MARK: - Clip Face (bilinear interpolated)
 
     enum ClipAxis { case x, z }
 
-    // MARK: - Clip Face
-
     private static func addClipFace(
         clipPos: Float, axis: ClipAxis,
-        otherClipPos: Float, otherCutVal: Double,
+        otherClipPos: Float, otherCut: Double,
         nz: Int, nr: Int, field: [[Double]], mode: PuckVizMode,
-        puckHeight: Float, dz: Float, topRadius: Float,
-        radiusAt: (Int) -> Float,
-        vertices: inout [SCNVector3], normals: inout [SCNVector3],
-        colors: inout [SIMD4<Float>], indices: inout [UInt32]
+        pH: Float, dz: Float, topR: Float, rAt: (Int) -> Float,
+        verts: inout [SCNVector3], norms: inout [SCNVector3],
+        cols: inout [SIMD4<Float>], idxs: inout [UInt32]
     ) {
-        let normal: SCNVector3
-        switch axis {
-        case .x: normal = SCNVector3(1, 0, 0)
-        case .z: normal = SCNVector3(0, 0, 1)
-        }
-
-        let perpSteps = nr
-        let rMax = topRadius
-        let perpMax = otherCutVal >= 0.99 ? rMax : otherClipPos
-        let perpMin: Float = -rMax
+        let norm: SCNVector3 = axis == .x ? SCNVector3(1, 0, 0) : SCNVector3(0, 0, 1)
+        let perpSteps = max(nr, 120)
+        let perpMax = otherCut >= 0.99 ? topR : otherClipPos
+        let perpMin: Float = -topR
         let perpD = (perpMax - perpMin) / Float(perpSteps)
 
+        srand48(axis == .x ? 777 : 888)
+
+        // Field sample with linear r-interpolation
+        func sample(_ z: Int, _ perpPos: Float, _ localR: Float) -> Double {
+            let dist = sqrt(clipPos * clipPos + perpPos * perpPos)
+            let rN = min(1.0, dist / max(0.001, localR))
+            let rF = rN * Float(nr - 1)
+            let r0 = min(nr - 2, max(0, Int(rF)))
+            let frac = Double(rF) - Double(r0)
+            return field[z][r0] * (1 - frac) + field[z][min(r0 + 1, nr - 1)] * frac
+        }
+
         for z in 0..<nz {
-            let yTop = puckHeight / 2 - Float(z) * dz
-            let yBot = yTop - dz
-            let localR = radiusAt(z)
+            let zB = min(z + 1, nz - 1)
+            let yT = pH / 2 - Float(z) * dz
+            let yB = yT - dz
+            let rT = rAt(z), rB = rAt(z + 1)
 
             for p in 0..<perpSteps {
-                let perp0 = perpMin + Float(p) * perpD
-                let perp1 = perp0 + perpD
-                let perpMid = (perp0 + perp1) / 2
+                let p0 = perpMin + Float(p) * perpD
+                let p1 = p0 + perpD
+                let pM = (p0 + p1) / 2
+                let distM = sqrt(clipPos * clipPos + pM * pM)
+                guard distM <= max(rT, rB) else { continue }
 
-                let distFromCenter = sqrt(clipPos * clipPos + perpMid * perpMid)
-                guard distFromCenter <= localR else { continue }
+                // Per-vertex field samples (bilinear)
+                let v_tl = sample(z,  p0, rT)
+                let v_tr = sample(z,  p1, rT)
+                let v_bl = sample(zB, p0, rB)
+                let v_br = sample(zB, p1, rB)
 
-                let rNorm = distFromCenter / localR
-                let rIdx = min(nr - 1, max(0, Int(rNorm * Float(nr))))
-                let val = field[z][rIdx]
-                let col = colorSIMD(val, mode: mode)
+                // Subtle grain noise for coffee texture
+                let grain = (drand48() - 0.5) * 0.06
+                let c_tl = colorSIMD(v_tl + grain, mode: mode)
+                let c_tr = colorSIMD(v_tr + grain, mode: mode)
+                let c_bl = colorSIMD(v_bl + grain, mode: mode)
+                let c_br = colorSIMD(v_br + grain, mode: mode)
 
-                let base = UInt32(vertices.count)
+                let b = UInt32(verts.count)
                 switch axis {
                 case .x:
-                    vertices.append(contentsOf: [
-                        SCNVector3(clipPos, yTop, perp0),
-                        SCNVector3(clipPos, yTop, perp1),
-                        SCNVector3(clipPos, yBot, perp1),
-                        SCNVector3(clipPos, yBot, perp0),
-                    ])
+                    verts += [SCNVector3(clipPos, yT, p0), SCNVector3(clipPos, yT, p1),
+                              SCNVector3(clipPos, yB, p1), SCNVector3(clipPos, yB, p0)]
                 case .z:
-                    vertices.append(contentsOf: [
-                        SCNVector3(perp0, yTop, clipPos),
-                        SCNVector3(perp1, yTop, clipPos),
-                        SCNVector3(perp1, yBot, clipPos),
-                        SCNVector3(perp0, yBot, clipPos),
-                    ])
+                    verts += [SCNVector3(p0, yT, clipPos), SCNVector3(p1, yT, clipPos),
+                              SCNVector3(p1, yB, clipPos), SCNVector3(p0, yB, clipPos)]
                 }
-                normals.append(contentsOf: [normal, normal, normal, normal])
-                colors.append(contentsOf: [col, col, col, col])
-                indices.append(contentsOf: [base, base+1, base+2, base, base+2, base+3])
+                norms += [norm, norm, norm, norm]
+                cols += [c_tl, c_tr, c_br, c_bl]
+                idxs += [b, b+1, b+2, b, b+2, b+3]
             }
         }
     }
 
-    // MARK: - Basket Shell
+    // MARK: - Basket Shell (headspace only — not alongside puck)
 
     private static func addBasketShell(
-        to parent: SCNNode, nz: Int, puckHeight: Float,
-        topRadius: Float, bottomRadius: Float,
-        shellExtraTop: Float,
-        xClip: Float, zClip: Float,
-        cutX: Double, cutZ: Double,
-        thetaSegments: Int
+        to parent: SCNNode, puckHeight pH: Float,
+        topR: Float, botR: Float, shellExtra: Float,
+        rAt: (Int) -> Float,
+        xC: Float, zC: Float, cutX: Double, cutZ: Double,
+        tSeg: Int
     ) {
-        let wallThickness: Float = 0.018
-        let shellBottom: Float = -puckHeight / 2 - 0.005
-        let shellTop: Float = puckHeight / 2 + shellExtraTop
-        let totalShellH = shellTop - shellBottom
-        let nzShell = 20
-        let dzShell = totalShellH / Float(nzShell)
-        let dTheta = Float(2.0 * .pi) / Float(thetaSegments)
+        let wall: Float = 0.018
+        let shellTop = pH / 2 + shellExtra
+        let puckTop = pH / 2
+        // Only render wall ABOVE the puck (headspace region)
+        let wallH = shellExtra + 0.002
+        let nzW = 6
+        let dzW = wallH / Float(nzW)
+        let dT = Float(2.0 * .pi) / Float(tSeg)
 
-        var verts: [SCNVector3] = []
-        var norms: [SCNVector3] = []
-        var idxs: [UInt32] = []
+        var vs: [SCNVector3] = [], ns: [SCNVector3] = [], ix: [UInt32] = []
 
-        func addQ(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3, _ v3: SCNVector3,
-                  n: SCNVector3) {
-            let base = UInt32(verts.count)
-            verts.append(contentsOf: [v0, v1, v2, v3])
-            norms.append(contentsOf: [n, n, n, n])
-            idxs.append(contentsOf: [base, base+1, base+2, base, base+2, base+3])
+        func addSQ(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3, _ v3: SCNVector3, n: SCNVector3) {
+            let b = UInt32(vs.count)
+            vs += [v0, v1, v2, v3]; ns += [n, n, n, n]
+            ix += [b, b+1, b+2, b, b+2, b+3]
         }
 
-        func shellR(y: Float) -> Float {
-            if y >= puckHeight / 2 { return topRadius + 0.002 }
-            if y <= -puckHeight / 2 { return bottomRadius + 0.002 }
-            let zFrac = (puckHeight / 2 - y) / puckHeight
-            let lip: Float = zFrac < 0.15 ? 0.03 * (1.0 - zFrac / 0.15) : 0
-            return topRadius + (bottomRadius - topRadius) * zFrac + lip + 0.002
-        }
+        // Shell radius follows top of basket (no taper in headspace)
+        let rShell = topR + 0.002
+        let rOut = rShell + wall
 
-        // Wall
-        for z in 0..<nzShell {
-            let yT = shellTop - Float(z) * dzShell
-            let yB = yT - dzShell
-            let rI0 = shellR(y: yT); let rO0 = rI0 + wallThickness
-            let rI1 = shellR(y: yB); let rO1 = rI1 + wallThickness
-
-            for t in 0..<thetaSegments {
-                let t0 = Float(t) * dTheta
-                let t1 = t0 + dTheta
-                let mid = (t0 + t1) / 2
-                let xM = rO0 * cos(mid), zM = rO0 * sin(mid)
-                guard xM <= xClip + wallThickness || cutX >= 0.99 else { continue }
-                guard zM <= zClip + wallThickness || cutZ >= 0.99 else { continue }
-
-                // Outer
-                addQ(SCNVector3(rO0*cos(t0), yT, rO0*sin(t0)),
-                     SCNVector3(rO0*cos(t1), yT, rO0*sin(t1)),
-                     SCNVector3(rO1*cos(t1), yB, rO1*sin(t1)),
-                     SCNVector3(rO1*cos(t0), yB, rO1*sin(t0)),
-                     n: SCNVector3(cos(mid), 0, sin(mid)))
-                // Inner
-                addQ(SCNVector3(rI0*cos(t1), yT, rI0*sin(t1)),
-                     SCNVector3(rI0*cos(t0), yT, rI0*sin(t0)),
-                     SCNVector3(rI1*cos(t0), yB, rI1*sin(t0)),
-                     SCNVector3(rI1*cos(t1), yB, rI1*sin(t1)),
-                     n: SCNVector3(-cos(mid), 0, -sin(mid)))
+        // Headspace wall
+        for z in 0..<nzW {
+            let yT = shellTop - Float(z) * dzW
+            let yB = yT - dzW
+            for t in 0..<tSeg {
+                let t0 = Float(t) * dT, t1 = t0 + dT, mid = (t0 + t1) / 2
+                guard rOut * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
+                guard rOut * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
+                addSQ(SCNVector3(rOut*cos(t0), yT, rOut*sin(t0)),
+                      SCNVector3(rOut*cos(t1), yT, rOut*sin(t1)),
+                      SCNVector3(rOut*cos(t1), yB, rOut*sin(t1)),
+                      SCNVector3(rOut*cos(t0), yB, rOut*sin(t0)),
+                      n: SCNVector3(cos(mid), 0, sin(mid)))
+                addSQ(SCNVector3(rShell*cos(t1), yT, rShell*sin(t1)),
+                      SCNVector3(rShell*cos(t0), yT, rShell*sin(t0)),
+                      SCNVector3(rShell*cos(t0), yB, rShell*sin(t0)),
+                      SCNVector3(rShell*cos(t1), yB, rShell*sin(t1)),
+                      n: SCNVector3(-cos(mid), 0, -sin(mid)))
             }
         }
 
-        // Bottom screen
-        let rBot = shellR(y: -puckHeight / 2)
-        let sSegs = min(thetaSegments, 80)
-        let sDT = Float(2.0 * .pi) / Float(sSegs)
+        // Bottom screen under the puck
+        let rBot = rAt(Int(pH / (pH / Float(128)) + 0.5)) + 0.002  // approximate bottom radius
+        let yScreen = -pH / 2 - 0.005
+        let screenSeg = min(tSeg, 80)
+        let sDT = Float(2.0 * .pi) / Float(screenSeg)
         let rings = 12
         let sDr = rBot / Float(rings)
-
         for ring in 0..<rings {
-            let rIn = Float(ring) * sDr, rOut = rIn + sDr
-            for t in 0..<sSegs {
-                let t0 = Float(t) * sDT, t1 = t0 + sDT
-                let mid = (t0 + t1) / 2, rM = (rIn + rOut) / 2
-                guard rM * cos(mid) <= xClip + wallThickness || cutX >= 0.99 else { continue }
-                guard rM * sin(mid) <= zClip + wallThickness || cutZ >= 0.99 else { continue }
-                addQ(SCNVector3(rIn*cos(t0), shellBottom, rIn*sin(t0)),
-                     SCNVector3(rOut*cos(t0), shellBottom, rOut*sin(t0)),
-                     SCNVector3(rOut*cos(t1), shellBottom, rOut*sin(t1)),
-                     SCNVector3(rIn*cos(t1), shellBottom, rIn*sin(t1)),
-                     n: SCNVector3(0, -1, 0))
+            let ri = Float(ring) * sDr, ro = ri + sDr
+            for t in 0..<screenSeg {
+                let t0 = Float(t) * sDT, t1 = t0 + sDT, mid = (t0 + t1) / 2
+                let rm = (ri + ro) / 2
+                guard rm * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
+                guard rm * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
+                addSQ(SCNVector3(ri*cos(t0), yScreen, ri*sin(t0)),
+                      SCNVector3(ro*cos(t0), yScreen, ro*sin(t0)),
+                      SCNVector3(ro*cos(t1), yScreen, ro*sin(t1)),
+                      SCNVector3(ri*cos(t1), yScreen, ri*sin(t1)),
+                      n: SCNVector3(0, -1, 0))
             }
         }
 
         // Top annulus
-        let rRI = shellR(y: shellTop), rRO = rRI + wallThickness
-        for t in 0..<thetaSegments {
-            let t0 = Float(t) * dTheta, t1 = t0 + dTheta
-            let mid = (t0 + t1) / 2
-            guard rRO * cos(mid) <= xClip + wallThickness || cutX >= 0.99 else { continue }
-            guard rRO * sin(mid) <= zClip + wallThickness || cutZ >= 0.99 else { continue }
-            addQ(SCNVector3(rRI*cos(t0), shellTop, rRI*sin(t0)),
-                 SCNVector3(rRO*cos(t0), shellTop, rRO*sin(t0)),
-                 SCNVector3(rRO*cos(t1), shellTop, rRO*sin(t1)),
-                 SCNVector3(rRI*cos(t1), shellTop, rRI*sin(t1)),
-                 n: SCNVector3(0, 1, 0))
+        for t in 0..<tSeg {
+            let t0 = Float(t) * dT, t1 = t0 + dT, mid = (t0 + t1) / 2
+            guard rOut * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
+            guard rOut * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
+            addSQ(SCNVector3(rShell*cos(t0), shellTop, rShell*sin(t0)),
+                  SCNVector3(rOut*cos(t0), shellTop, rOut*sin(t0)),
+                  SCNVector3(rOut*cos(t1), shellTop, rOut*sin(t1)),
+                  SCNVector3(rShell*cos(t1), shellTop, rShell*sin(t1)),
+                  n: SCNVector3(0, 1, 0))
         }
 
-        let vertexSource = SCNGeometrySource(vertices: verts)
-        let normalSource = SCNGeometrySource(normals: norms)
-        let element = SCNGeometryElement(indices: idxs, primitiveType: .triangles)
-        let geo = SCNGeometry(sources: [vertexSource, normalSource], elements: [element])
-
+        let vSrc = SCNGeometrySource(vertices: vs)
+        let nSrc = SCNGeometrySource(normals: ns)
+        let el = SCNGeometryElement(indices: ix, primitiveType: .triangles)
+        let geo = SCNGeometry(sources: [vSrc, nSrc], elements: [el])
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
         mat.diffuse.contents = pColor(0.72, 0.72, 0.75)
         mat.metalness.contents = 0.92
         mat.roughness.contents = 0.30
         geo.materials = [mat]
-
         parent.addChildNode(SCNNode(geometry: geo))
     }
 
@@ -545,86 +494,68 @@ enum PuckSceneBuilder {
         vertices: [SCNVector3], normals: [SCNVector3],
         colors: [SIMD4<Float>], indices: [UInt32]
     ) -> SCNGeometry {
-        let vertexSource = SCNGeometrySource(vertices: vertices)
-        let normalSource = SCNGeometrySource(normals: normals)
-        let colorData = colors.withUnsafeBytes { Data($0) }
-        let colorSource = SCNGeometrySource(
-            data: colorData, semantic: .color, vectorCount: colors.count,
+        let vSrc = SCNGeometrySource(vertices: vertices)
+        let nSrc = SCNGeometrySource(normals: normals)
+        let cData = colors.withUnsafeBytes { Data($0) }
+        let cSrc = SCNGeometrySource(
+            data: cData, semantic: .color, vectorCount: colors.count,
             usesFloatComponents: true, componentsPerVector: 4,
             bytesPerComponent: MemoryLayout<Float>.size,
             dataOffset: 0, dataStride: MemoryLayout<SIMD4<Float>>.stride
         )
-        let element = SCNGeometryElement(indices: indices, primitiveType: .triangles)
-        let geo = SCNGeometry(sources: [vertexSource, normalSource, colorSource], elements: [element])
-        let mat = SCNMaterial()
-        mat.lightingModel = .physicallyBased
-        mat.roughness.contents = 0.65
-        mat.metalness.contents = 0.05
-        geo.materials = [mat]
-        return geo
+        let el = SCNGeometryElement(indices: indices, primitiveType: .triangles)
+        return SCNGeometry(sources: [vSrc, nSrc, cSrc], elements: [el])
     }
 
     // MARK: - Basket Rim
 
     private static func addBasketRim(to parent: SCNNode, radius: Float, y: Float) {
         let torus = SCNTorus(ringRadius: CGFloat(radius), pipeRadius: 0.022)
-        let mat = SCNMaterial()
-        mat.diffuse.contents = pColor(0.75, 0.75, 0.78)
-        mat.lightingModel = .physicallyBased
-        mat.roughness.contents = 0.20
-        mat.metalness.contents = 0.95
-        torus.materials = [mat]
-        let node = SCNNode(geometry: torus)
-        node.position = SCNVector3(0, y, 0)
-        parent.addChildNode(node)
+        let m = SCNMaterial()
+        m.diffuse.contents = pColor(0.75, 0.75, 0.78)
+        m.lightingModel = .physicallyBased
+        m.roughness.contents = 0.20; m.metalness.contents = 0.95
+        torus.materials = [m]
+        let n = SCNNode(geometry: torus); n.position = SCNVector3(0, y, 0)
+        parent.addChildNode(n)
     }
 
     // MARK: - Grind Particles
 
     private static func addGrindParticles(
         to parent: SCNNode, nz: Int, nr: Int,
-        puckHeight: Float, radiusAt: (Int) -> Float,
-        grindMicrons: Double, field: [[Double]], mode: PuckVizMode,
-        xClip: Float, zClip: Float, cutX: Double, cutZ: Double
+        pH: Float, rAt: (Int) -> Float,
+        grind: Double, field: [[Double]], mode: PuckVizMode,
+        xC: Float, zC: Float, cutX: Double, cutZ: Double
     ) {
-        let particleR = CGFloat(max(0.005, grindMicrons / 400.0 * 0.010))
-        let sphere = SCNSphere(radius: particleR)
-        sphere.segmentCount = 8
-        let dzP = puckHeight / Float(nz)
-        let stepZ = max(1, nz / 14), stepR = max(1, nr / 10)
-
+        let pr = CGFloat(max(0.005, grind / 400.0 * 0.010))
+        let sphere = SCNSphere(radius: pr); sphere.segmentCount = 8
+        let dzP = pH / Float(nz)
+        let sZ = max(1, nz / 14), sR = max(1, nr / 10)
         srand48(123)
+
         for face in 0..<2 {
             let isX = face == 0
             guard (isX ? cutX : cutZ) < 0.99 else { continue }
-            let clip = isX ? xClip : zClip
-            let otherClip = isX ? zClip : xClip
-            let otherCut = isX ? cutZ : cutX
+            let clip = isX ? xC : zC
+            let oc = isX ? zC : xC, ocut = isX ? cutZ : cutX
 
-            for z in stride(from: stepZ / 2, to: nz, by: stepZ) {
-                let rMax = radiusAt(z)
-                for r in stride(from: stepR / 2, to: nr, by: stepR) {
-                    let rPos = (Float(r) + Float(drand48()) * 0.5) / Float(nr) * rMax
-                    let dist = sqrt(clip * clip + rPos * rPos)
-                    guard dist <= rMax else { continue }
-                    guard rPos <= otherClip || otherCut >= 0.99 else { continue }
-
-                    let val = field[z][r]
-                    let col = colorSIMD(val, mode: mode)
-                    let yPos = puckHeight / 2 - (Float(z) + Float(drand48()) * 0.5) * dzP
-                    let jitter = Float(drand48() - 0.5) * 0.008
-
-                    let mat = SCNMaterial()
-                    mat.diffuse.contents = pColor(CGFloat(col.x) * 0.7, CGFloat(col.y) * 0.7, CGFloat(col.z) * 0.7)
-                    mat.lightingModel = .physicallyBased
-                    mat.roughness.contents = 0.9
-                    sphere.materials = [mat]
-
-                    let node = SCNNode(geometry: sphere.copy() as? SCNGeometry ?? sphere)
-                    node.position = isX
-                        ? SCNVector3(clip + jitter, yPos, rPos)
-                        : SCNVector3(rPos, yPos, clip + jitter)
-                    parent.addChildNode(node)
+            for z in stride(from: sZ / 2, to: nz, by: sZ) {
+                let rM = rAt(z)
+                for r in stride(from: sR / 2, to: nr, by: sR) {
+                    let rP = (Float(r) + Float(drand48()) * 0.5) / Float(nr) * rM
+                    let dist = sqrt(clip * clip + rP * rP)
+                    guard dist <= rM, rP <= oc || ocut >= 0.99 else { continue }
+                    let col = colorSIMD(field[z][r], mode: mode)
+                    let yP = pH / 2 - (Float(z) + Float(drand48()) * 0.5) * dzP
+                    let j = Float(drand48() - 0.5) * 0.008
+                    let m = SCNMaterial()
+                    m.diffuse.contents = pColor(CGFloat(col.x)*0.7, CGFloat(col.y)*0.7, CGFloat(col.z)*0.7)
+                    m.lightingModel = .physicallyBased; m.roughness.contents = 0.92
+                    sphere.materials = [m]
+                    let n = SCNNode(geometry: sphere.copy() as? SCNGeometry ?? sphere)
+                    n.position = isX ? SCNVector3(clip+j, yP, rP) : SCNVector3(rP, yP, clip+j)
+                    parent.addChildNode(n)
                 }
             }
         }
@@ -634,61 +565,50 @@ enum PuckSceneBuilder {
 
     private static func addFlowStreamlines(
         to parent: SCNNode, result: PuckSimulationResult,
-        puckHeight: Float, radiusAt: (Int) -> Float,
-        xClip: Float, zClip: Float, cutX: Double, cutZ: Double
+        pH: Float, rAt: (Int) -> Float,
+        xC: Float, zC: Float, cutX: Double, cutZ: Double
     ) {
         let nz = result.gridRows, nr = result.gridCols
-        let dzF = puckHeight / Float(nz)
-        let velField = result.velocityField
-        let physMax = result.grid.flatMap { $0 }.map { $0.flowMagnitude }.max() ?? 1e-10
-        let maxLen = dzF * 2.5
-        let stepZ = max(1, nz / 10), stepR = max(1, nr / 6)
+        let dzF = pH / Float(nz)
+        let vF = result.velocityField
+        let pMax = result.grid.flatMap { $0 }.map { $0.flowMagnitude }.max() ?? 1e-10
+        let maxL = dzF * 2.5
+        let sZ = max(1, nz / 10), sR = max(1, nr / 6)
 
         for face in 0..<2 {
             let isX = face == 0
             guard (isX ? cutX : cutZ) < 0.99 else { continue }
-            let clip = isX ? xClip : zClip
-            let otherClip = isX ? zClip : xClip
-            let otherCut = isX ? cutZ : cutX
+            let clip = isX ? xC : zC
+            let oc = isX ? zC : xC, ocut = isX ? cutZ : cutX
 
-            for z in stride(from: stepZ / 2, to: nz, by: stepZ) {
-                let rMax = radiusAt(z)
-                for r in stride(from: stepR / 2, to: nr, by: stepR) {
-                    let nv = Float(velField[z][r])
-                    guard nv > 0.05 else { continue }
-                    let rPos = (Float(r) + 0.5) / Float(nr) * rMax
-                    let dist = sqrt(clip * clip + rPos * rPos)
-                    guard dist <= rMax else { continue }
-                    guard rPos <= otherClip || otherCut >= 0.99 else { continue }
-
+            for z in stride(from: sZ / 2, to: nz, by: sZ) {
+                let rM = rAt(z)
+                for r in stride(from: sR / 2, to: nr, by: sR) {
+                    let nv = Float(vF[z][r]); guard nv > 0.05 else { continue }
+                    let rP = (Float(r) + 0.5) / Float(nr) * rM
+                    let dist = sqrt(clip * clip + rP * rP)
+                    guard dist <= rM, rP <= oc || ocut >= 0.99 else { continue }
                     let cell = result.grid[z][r]
-                    let yPos = puckHeight / 2 - (Float(z) + 0.5) * dzF
-                    let aLen = max(0.005, nv * maxLen)
-                    let vr = Float(cell.velocityR / physMax)
-                    let vz = Float(-cell.velocityZ / physMax)
-                    guard sqrt(vr * vr + vz * vz) > 1e-6 else { continue }
-                    let angle = atan2(vz, vr)
-
-                    let cyl = SCNCylinder(radius: 0.0015, height: CGFloat(aLen))
-                    let mat = SCNMaterial()
-                    mat.diffuse.contents = pColor(1, 1, 1)
-                    mat.transparency = CGFloat(0.25 + nv * 0.5)
-                    mat.lightingModel = .constant
-                    cyl.materials = [mat]
-
-                    let node = SCNNode(geometry: cyl)
+                    let yP = pH / 2 - (Float(z) + 0.5) * dzF
+                    let aL = max(0.005, nv * maxL)
+                    let vr = Float(cell.velocityR / pMax)
+                    let vz = Float(-cell.velocityZ / pMax)
+                    guard sqrt(vr*vr + vz*vz) > 1e-6 else { continue }
+                    let ang = atan2(vz, vr)
+                    let cyl = SCNCylinder(radius: 0.0015, height: CGFloat(aL))
+                    let m = SCNMaterial()
+                    m.diffuse.contents = pColor(1, 1, 1)
+                    m.transparency = CGFloat(0.25 + nv * 0.5)
+                    m.lightingModel = .constant; cyl.materials = [m]
+                    let nd = SCNNode(geometry: cyl)
                     if isX {
-                        let mZ = rPos + cos(angle) * aLen * 0.5
-                        let mY = yPos + sin(angle) * aLen * 0.5
-                        node.position = SCNVector3(clip, mY, mZ)
-                        node.eulerAngles.x = angle - .pi / 2
+                        nd.position = SCNVector3(clip, yP + sin(ang)*aL*0.5, rP + cos(ang)*aL*0.5)
+                        nd.eulerAngles.x = ang - .pi/2
                     } else {
-                        let mX = rPos + cos(angle) * aLen * 0.5
-                        let mY = yPos + sin(angle) * aLen * 0.5
-                        node.position = SCNVector3(mX, mY, clip)
-                        node.eulerAngles.z = angle - .pi / 2
+                        nd.position = SCNVector3(rP + cos(ang)*aL*0.5, yP + sin(ang)*aL*0.5, clip)
+                        nd.eulerAngles.z = ang - .pi/2
                     }
-                    parent.addChildNode(node)
+                    parent.addChildNode(nd)
                 }
             }
         }
@@ -697,62 +617,40 @@ enum PuckSceneBuilder {
     // MARK: - Lighting
 
     private static func addLighting(to root: SCNNode) {
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light?.type = .ambient
-        ambient.light?.intensity = 400
-        ambient.light?.color = pColor(0.78, 0.78, 0.88)
-        root.addChildNode(ambient)
+        func light(_ type: SCNLight.LightType, _ intensity: CGFloat,
+                    _ r: CGFloat, _ g: CGFloat, _ b: CGFloat,
+                    pos: SCNVector3, shadow: Bool = false) {
+            let n = SCNNode(); n.light = SCNLight()
+            n.light?.type = type; n.light?.intensity = intensity
+            n.light?.color = pColor(r, g, b)
+            if shadow { n.light?.castsShadow = true; n.light?.shadowRadius = 4 }
+            n.position = pos; n.look(at: SCNVector3(0, 0, 0))
+            root.addChildNode(n)
+        }
+        let a = SCNNode(); a.light = SCNLight()
+        a.light?.type = .ambient; a.light?.intensity = 400
+        a.light?.color = pColor(0.80, 0.78, 0.75) // warm ambient
+        root.addChildNode(a)
 
-        let key = SCNNode()
-        key.light = SCNLight()
-        key.light?.type = .directional
-        key.light?.intensity = 1000
-        key.light?.color = pColor(1.0, 0.97, 0.92)
-        key.light?.castsShadow = true
-        key.light?.shadowRadius = 4
-        key.position = SCNVector3(2, 3, 2)
-        key.look(at: SCNVector3(0, 0, 0))
-        root.addChildNode(key)
-
-        let fill = SCNNode()
-        fill.light = SCNLight()
-        fill.light?.type = .directional
-        fill.light?.intensity = 350
-        fill.light?.color = pColor(0.6, 0.7, 1.0)
-        fill.position = SCNVector3(-2, 0.5, 1)
-        fill.look(at: SCNVector3(0, 0, 0))
-        root.addChildNode(fill)
-
-        let rim = SCNNode()
-        rim.light = SCNLight()
-        rim.light?.type = .directional
-        rim.light?.intensity = 250
-        rim.light?.color = pColor(0.5, 0.6, 1.0)
-        rim.position = SCNVector3(0, -2, -1)
-        rim.look(at: SCNVector3(0, 0, 0))
-        root.addChildNode(rim)
+        light(.directional, 1000, 1.0, 0.97, 0.92, pos: SCNVector3(2, 3, 2), shadow: true)
+        light(.directional, 350, 0.6, 0.7, 1.0, pos: SCNVector3(-2, 0.5, 1))
+        light(.directional, 250, 0.5, 0.6, 1.0, pos: SCNVector3(0, -2, -1))
     }
 
     // MARK: - Labels
 
     private static func addLabel(to parent: SCNNode, text: String, position: SCNVector3) {
-        let textGeo = SCNText(string: text, extrusionDepth: 0)
-        textGeo.font = .systemFont(ofSize: 0.06, weight: .semibold)
-        textGeo.flatness = 0.05
-        let mat = SCNMaterial()
-        mat.diffuse.contents = pColor(1, 1, 1)
-        mat.transparency = 0.6
-        mat.lightingModel = .constant
-        textGeo.materials = [mat]
-        let node = SCNNode(geometry: textGeo)
-        let (mn, mx) = node.boundingBox
-        node.pivot = SCNMatrix4MakeTranslation((mx.x - mn.x) / 2, 0, 0)
-        node.position = position
-        let billboard = SCNBillboardConstraint()
-        billboard.freeAxes = .all
-        node.constraints = [billboard]
-        parent.addChildNode(node)
+        let g = SCNText(string: text, extrusionDepth: 0)
+        g.font = .systemFont(ofSize: 0.06, weight: .semibold); g.flatness = 0.05
+        let m = SCNMaterial()
+        m.diffuse.contents = pColor(1, 1, 1); m.transparency = 0.6
+        m.lightingModel = .constant; g.materials = [m]
+        let n = SCNNode(geometry: g)
+        let (mn, mx) = n.boundingBox
+        n.pivot = SCNMatrix4MakeTranslation((mx.x - mn.x) / 2, 0, 0)
+        n.position = position
+        let b = SCNBillboardConstraint(); b.freeAxes = .all; n.constraints = [b]
+        parent.addChildNode(n)
     }
 
     // MARK: - Animation Progress
@@ -760,26 +658,21 @@ enum PuckSceneBuilder {
     static func applyAnimationProgress(to field: [[Double]], progress: Double, mode: PuckVizMode) -> [[Double]] {
         guard progress < 1.0 else { return field }
         if mode == .permeability { return field }
-        let nz = field.count
-        guard nz > 0 else { return field }
-        let baseValue: Double = 0.05
-        let frontRow = progress * Double(nz) / 0.65
-
+        let nz = field.count; guard nz > 0 else { return field }
+        let base: Double = 0.05
+        let front = progress * Double(nz) / 0.65
         return field.enumerated().map { (z, row) in
             let zD = Double(z)
-            if zD > frontRow + 2.0 {
-                return [Double](repeating: baseValue, count: row.count)
-            } else {
-                let timeSince = max(0, frontRow - zD) / Double(nz)
-                let edge = zD <= frontRow ? 1.0 : max(0, 1.0 - (zD - frontRow) / 2.0)
-                let ramp: Double
-                switch mode {
-                case .extraction: ramp = min(1.0, timeSince * 4.0)
-                case .pressure:   ramp = min(1.0, timeSince * 6.0)
-                default:          ramp = min(1.0, timeSince * 3.5)
-                }
-                return row.map { max(baseValue, $0 * ramp * edge) }
+            if zD > front + 2.0 { return [Double](repeating: base, count: row.count) }
+            let ts = max(0, front - zD) / Double(nz)
+            let edge = zD <= front ? 1.0 : max(0, 1.0 - (zD - front) / 2.0)
+            let ramp: Double
+            switch mode {
+            case .extraction: ramp = min(1.0, ts * 4.0)
+            case .pressure:   ramp = min(1.0, ts * 6.0)
+            default:          ramp = min(1.0, ts * 3.5)
             }
+            return row.map { max(base, $0 * ramp * edge) }
         }
     }
 
@@ -793,15 +686,90 @@ enum PuckSceneBuilder {
         }
     }
 
+    // MARK: - Fast Color (direct Float arithmetic, no UIColor/NSColor)
+
     static func colorSIMD(_ value: Double, mode: PuckVizMode) -> SIMD4<Float> {
-        let c = heatmapColor(value, mode: mode)
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        #if canImport(UIKit)
-        UIColor(c).getRed(&r, green: &g, blue: &b, alpha: &a)
-        #elseif canImport(AppKit)
-        (NSColor(c).usingColorSpace(.sRGB) ?? NSColor.white).getRed(&r, green: &g, blue: &b, alpha: &a)
-        #endif
-        return SIMD4<Float>(Float(r), Float(g), Float(b), 1.0)
+        let t = Float(max(0, min(1, value)))
+        let r: Float, g: Float, b: Float
+
+        switch mode {
+        case .pressure:
+            if t < 0.25 {
+                let f = t / 0.25
+                r = 0; g = f * 0.5; b = 0.6 + f * 0.4
+            } else if t < 0.5 {
+                let f = (t - 0.25) / 0.25
+                r = 0; g = 0.5 + f * 0.5; b = 1.0 - f * 0.5
+            } else if t < 0.75 {
+                let f = (t - 0.5) / 0.25
+                r = f; g = 1.0; b = 0.5 - f * 0.5
+            } else {
+                let f = (t - 0.75) / 0.25
+                r = 1.0; g = 1.0 - f * 0.7; b = 0
+            }
+
+        case .flow:
+            if t < 0.2 {
+                let f = t / 0.2
+                r = 0.02; g = 0.02 + f * 0.15; b = 0.15 + f * 0.4
+            } else if t < 0.4 {
+                let f = (t - 0.2) / 0.2
+                r = 0; g = 0.17 + f * 0.63; b = 0.55 + f * 0.45
+            } else if t < 0.6 {
+                let f = (t - 0.4) / 0.2
+                r = f * 0.9; g = 0.8 + f * 0.2; b = 1.0 - f * 0.2
+            } else if t < 0.8 {
+                let f = (t - 0.6) / 0.2
+                r = 0.9 + f * 0.1; g = 1.0 - f * 0.3; b = 0.8 - f * 0.8
+            } else {
+                let f = (t - 0.8) / 0.2
+                r = 1.0; g = 0.7 - f * 0.5; b = 0
+            }
+
+        case .extraction:
+            if t < 0.3 {
+                let f = t / 0.3
+                r = 0.05; g = 0.08 + f * 0.3; b = 0.05 + f * 0.1
+            } else if t < 0.55 {
+                let f = (t - 0.3) / 0.25
+                r = 0.05 + f * 0.1; g = 0.38 + f * 0.52; b = 0.15 - f * 0.05
+            } else if t < 0.75 {
+                let f = (t - 0.55) / 0.2
+                r = 0.15 + f * 0.85; g = 0.9 - f * 0.2; b = 0.1
+            } else {
+                let f = (t - 0.75) / 0.25
+                r = 1.0; g = 0.7 - f * 0.55; b = 0.1 - f * 0.1
+            }
+
+        case .time:
+            if t < 0.25 {
+                let f = t / 0.25
+                r = 0.05; g = 0.15 + f * 0.35; b = 0.5 + f * 0.3
+            } else if t < 0.5 {
+                let f = (t - 0.25) / 0.25
+                r = 0.05 + f * 0.2; g = 0.5 + f * 0.3; b = 0.8 - f * 0.3
+            } else if t < 0.75 {
+                let f = (t - 0.5) / 0.25
+                r = 0.25 + f * 0.65; g = 0.8 - f * 0.15; b = 0.5 - f * 0.35
+            } else {
+                let f = (t - 0.75) / 0.25
+                r = 0.9 + f * 0.1; g = 0.65 - f * 0.45; b = 0.15 - f * 0.1
+            }
+
+        case .permeability:
+            if t < 0.33 {
+                let f = t / 0.33
+                r = 0.15 + f * 0.05; g = 0.05 + f * 0.15; b = 0.25 + f * 0.35
+            } else if t < 0.66 {
+                let f = (t - 0.33) / 0.33
+                r = 0.2 - f * 0.1; g = 0.2 + f * 0.45; b = 0.6 - f * 0.1
+            } else {
+                let f = (t - 0.66) / 0.34
+                r = 0.1 + f * 0.3; g = 0.65 + f * 0.25; b = 0.5 - f * 0.25
+            }
+        }
+
+        return SIMD4<Float>(r, g, b, 1.0)
     }
 
     static func pColor(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> Any {
