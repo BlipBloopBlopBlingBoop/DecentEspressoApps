@@ -13,7 +13,7 @@
 //  is never lost during animation playback.
 //
 //  Color computation uses direct Float arithmetic (no SwiftUI Color /
-//  UIColor round-trip) for ~100K vertices per frame on M-series hardware.
+//  UIColor round-trip) for ~200K vertices per frame on M-series hardware.
 //
 
 import SwiftUI
@@ -26,6 +26,7 @@ struct Puck3DSceneView: View {
     let mode: PuckVizMode
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
+    let tampPressureKg: Double
     var animationProgress: Double = 1.0
     var cutX: Double = 0.55
     var cutZ: Double = 0.55
@@ -34,6 +35,7 @@ struct Puck3DSceneView: View {
         PuckSceneRepresentable(
             result: result, mode: mode, basketSpec: basketSpec,
             grindSizeMicrons: grindSizeMicrons,
+            tampPressureKg: tampPressureKg,
             cutX: cutX, cutZ: cutZ,
             animationProgress: animationProgress
         )
@@ -48,6 +50,7 @@ struct PuckSceneRepresentable: UIViewRepresentable {
     let mode: PuckVizMode
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
+    let tampPressureKg: Double
     let cutX: Double
     let cutZ: Double
     var animationProgress: Double = 1.0
@@ -61,7 +64,8 @@ struct PuckSceneRepresentable: UIViewRepresentable {
         let scene = PuckSceneBuilder.makeSceneShell()
         scene.rootNode.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
+            grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ,
             animationProgress: animationProgress))
         v.scene = scene
         return v
@@ -72,7 +76,8 @@ struct PuckSceneRepresentable: UIViewRepresentable {
         root.childNode(withName: PuckSceneBuilder.contentNodeName, recursively: false)?.removeFromParentNode()
         root.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
+            grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ,
             animationProgress: animationProgress))
     }
 }
@@ -82,6 +87,7 @@ struct PuckSceneRepresentable: NSViewRepresentable {
     let mode: PuckVizMode
     let basketSpec: BasketSpec
     let grindSizeMicrons: Double
+    let tampPressureKg: Double
     let cutX: Double
     let cutZ: Double
     var animationProgress: Double = 1.0
@@ -95,7 +101,8 @@ struct PuckSceneRepresentable: NSViewRepresentable {
         let scene = PuckSceneBuilder.makeSceneShell()
         scene.rootNode.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
+            grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ,
             animationProgress: animationProgress))
         v.scene = scene
         return v
@@ -106,7 +113,8 @@ struct PuckSceneRepresentable: NSViewRepresentable {
         root.childNode(withName: PuckSceneBuilder.contentNodeName, recursively: false)?.removeFromParentNode()
         root.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
-            grindSizeMicrons: grindSizeMicrons, cutX: cutX, cutZ: cutZ,
+            grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ,
             animationProgress: animationProgress))
     }
 }
@@ -144,6 +152,7 @@ enum PuckSceneBuilder {
         mode: PuckVizMode,
         basketSpec: BasketSpec,
         grindSizeMicrons: Double,
+        tampPressureKg: Double,
         cutX: Double, cutZ: Double,
         animationProgress: Double = 1.0
     ) -> SCNNode {
@@ -153,7 +162,7 @@ enum PuckSceneBuilder {
         let nz = result.gridRows
         let nr = result.gridCols
         let isAnim = animationProgress < 1.0
-        let thetaSeg = isAnim ? 120 : 180
+        let thetaSeg = isAnim ? 160 : 240
 
         let rawField = selectField(result: result, mode: mode)
         let field = applyAnimationProgress(to: rawField, progress: animationProgress, mode: mode)
@@ -166,6 +175,16 @@ enum PuckSceneBuilder {
         let dz = pH / Float(nz)
         let xC = Float(cutX) * topR
         let zC = Float(cutZ) * topR
+
+        // Outer surface sampling: blend outer ~5% cells for richer color
+        let outerSpan = max(2, nr / 20)
+        func outerVal(_ z: Int) -> Double {
+            var sum = 0.0
+            for r in (nr - outerSpan)..<nr {
+                sum += field[min(z, nz - 1)][r]
+            }
+            return sum / Double(outerSpan)
+        }
 
         // MARK: Mesh buffers
 
@@ -199,10 +218,11 @@ enum PuckSceneBuilder {
         let dT = Float(2.0 * .pi) / Float(thetaSeg)
 
         // MARK: Outer surface — per-vertex z-interpolated colors
+        // Uses blend of outer radial cells for richer color gradient
 
         for z in 0..<nz {
-            let valT = field[z][nr - 1]
-            let valB = field[min(z + 1, nz - 1)][nr - 1]
+            let valT = outerVal(z)
+            let valB = outerVal(z + 1)
             let cT = colorSIMD(valT, mode: mode)
             let cB = colorSIMD(valB, mode: mode)
             let yT = pH / 2 - Float(z) * dz
@@ -226,11 +246,14 @@ enum PuckSceneBuilder {
             }
         }
 
-        // MARK: Top face
+        // MARK: Top face — per-vertex radial interpolation
 
         let rTO = rAt(0)
         for r in 0..<nr {
-            let c = colorSIMD(field[0][r], mode: mode)
+            let valI = field[0][r]
+            let valO = field[0][min(r + 1, nr - 1)]
+            let cI = colorSIMD(valI, mode: mode)
+            let cO = colorSIMD(valO, mode: mode)
             let ri = Float(r) / Float(nr) * rTO
             let ro = Float(r + 1) / Float(nr) * rTO
             let y = pH / 2
@@ -240,19 +263,23 @@ enum PuckSceneBuilder {
                 let rm = (ri + ro) / 2
                 guard rm * cos(mid) <= xC || cutX >= 0.99 else { continue }
                 guard rm * sin(mid) <= zC || cutZ >= 0.99 else { continue }
-                addQ(SCNVector3(ri*cos(t0), y, ri*sin(t0)),
-                     SCNVector3(ro*cos(t0), y, ro*sin(t0)),
-                     SCNVector3(ro*cos(t1), y, ro*sin(t1)),
-                     SCNVector3(ri*cos(t1), y, ri*sin(t1)),
-                     n: SCNVector3(0, 1, 0), c: c)
+                addQI(SCNVector3(ri*cos(t0), y, ri*sin(t0)),
+                      SCNVector3(ro*cos(t0), y, ro*sin(t0)),
+                      SCNVector3(ro*cos(t1), y, ro*sin(t1)),
+                      SCNVector3(ri*cos(t1), y, ri*sin(t1)),
+                      n: SCNVector3(0, 1, 0),
+                      c0: cI, c1: cO, c2: cO, c3: cI)
             }
         }
 
-        // MARK: Bottom face
+        // MARK: Bottom face — per-vertex radial interpolation
 
         let rBO = rAt(nz)
         for r in 0..<nr {
-            let c = colorSIMD(field[nz - 1][r], mode: mode)
+            let valI = field[nz - 1][r]
+            let valO = field[nz - 1][min(r + 1, nr - 1)]
+            let cI = colorSIMD(valI, mode: mode)
+            let cO = colorSIMD(valO, mode: mode)
             let ri = Float(r) / Float(nr) * rBO
             let ro = Float(r + 1) / Float(nr) * rBO
             let y = -pH / 2
@@ -262,49 +289,62 @@ enum PuckSceneBuilder {
                 let rm = (ri + ro) / 2
                 guard rm * cos(mid) <= xC || cutX >= 0.99 else { continue }
                 guard rm * sin(mid) <= zC || cutZ >= 0.99 else { continue }
-                addQ(SCNVector3(ri*cos(t1), y, ri*sin(t1)),
-                     SCNVector3(ro*cos(t1), y, ro*sin(t1)),
-                     SCNVector3(ro*cos(t0), y, ro*sin(t0)),
-                     SCNVector3(ri*cos(t0), y, ri*sin(t0)),
-                     n: SCNVector3(0, -1, 0), c: c)
+                addQI(SCNVector3(ri*cos(t1), y, ri*sin(t1)),
+                      SCNVector3(ro*cos(t1), y, ro*sin(t1)),
+                      SCNVector3(ro*cos(t0), y, ro*sin(t0)),
+                      SCNVector3(ri*cos(t0), y, ri*sin(t0)),
+                      n: SCNVector3(0, -1, 0),
+                      c0: cI, c1: cO, c2: cO, c3: cI)
             }
         }
 
-        // MARK: Clip faces — bilinear interpolated colors + subtle grain noise
+        // MARK: Clip faces — bilinear interpolated colors + grain noise
+
+        // Grain noise intensity scales with grind size (coarser = more texture)
+        let grainIntensity = 0.03 + 0.06 * min(1.0, grindSizeMicrons / 600.0)
 
         if cutX < 0.99 {
             addClipFace(clipPos: xC, axis: .x, otherClipPos: zC, otherCut: cutZ,
                         nz: nz, nr: nr, field: field, mode: mode,
                         pH: pH, dz: dz, topR: topR, rAt: rAt,
+                        grainIntensity: grainIntensity,
                         verts: &verts, norms: &norms, cols: &cols, idxs: &idxs)
         }
         if cutZ < 0.99 {
             addClipFace(clipPos: zC, axis: .z, otherClipPos: xC, otherCut: cutX,
                         nz: nz, nr: nr, field: field, mode: mode,
                         pH: pH, dz: dz, topR: topR, rAt: rAt,
+                        grainIntensity: grainIntensity,
                         verts: &verts, norms: &norms, cols: &cols, idxs: &idxs)
         }
 
-        // Build puck node with coffee-like material
+        // Build puck node with grind/tamp-responsive material
         let puckGeo = buildGeometry(vertices: verts, normals: norms, colors: cols, indices: idxs)
         let puckMat = SCNMaterial()
         puckMat.lightingModel = .physicallyBased
-        puckMat.roughness.contents = 0.88   // matte like tamped coffee
-        puckMat.metalness.contents = 0.02   // non-metallic organic surface
+        // Roughness: coarser grind = rougher surface, finer = smoother
+        let grindNorm = min(1.0, grindSizeMicrons / 800.0)
+        puckMat.roughness.contents = 0.75 + grindNorm * 0.20  // 0.75-0.95
+        puckMat.metalness.contents = 0.02
+        // Tamp: heavier tamp = slightly more specular (smoother compacted surface)
+        let tampNorm = min(1.0, tampPressureKg / 30.0)
+        let roughAdj = CGFloat(puckMat.roughness.contents as? Double ?? 0.88) - CGFloat(tampNorm * 0.08)
+        puckMat.roughness.contents = roughAdj
         puckGeo.materials = [puckMat]
         root.addChildNode(SCNNode(geometry: puckGeo))
 
-        // MARK: Basket shell — headspace wall only (above puck)
+        // MARK: Basket shell — headspace wall only (stops at puck top exactly)
         let shellExtra: Float = pH * 0.25
         addBasketShell(to: root, puckHeight: pH, topR: topR, botR: botR,
-                       shellExtra: shellExtra, rAt: rAt,
+                       shellExtra: shellExtra, rAt: rAt, nz: nz,
                        xC: xC, zC: zC, cutX: cutX, cutZ: cutZ, tSeg: thetaSeg)
         addBasketRim(to: root, radius: topR + 0.04, y: pH / 2 + shellExtra)
 
-        // Decorations (skip during animation)
+        // Decorations (skip during animation for performance)
         if (cutX < 0.99 || cutZ < 0.99) && !isAnim {
             addGrindParticles(to: root, nz: nz, nr: nr, pH: pH, rAt: rAt,
-                              grind: grindSizeMicrons, field: field, mode: mode,
+                              grind: grindSizeMicrons, tamp: tampPressureKg,
+                              field: field, mode: mode,
                               xC: xC, zC: zC, cutX: cutX, cutZ: cutZ)
             addFlowStreamlines(to: root, result: result, pH: pH, rAt: rAt,
                                xC: xC, zC: zC, cutX: cutX, cutZ: cutZ)
@@ -318,7 +358,7 @@ enum PuckSceneBuilder {
         return root
     }
 
-    // MARK: - Clip Face (bilinear interpolated)
+    // MARK: - Clip Face (bilinear interpolated + grain texture)
 
     enum ClipAxis { case x, z }
 
@@ -327,11 +367,12 @@ enum PuckSceneBuilder {
         otherClipPos: Float, otherCut: Double,
         nz: Int, nr: Int, field: [[Double]], mode: PuckVizMode,
         pH: Float, dz: Float, topR: Float, rAt: (Int) -> Float,
+        grainIntensity: Double,
         verts: inout [SCNVector3], norms: inout [SCNVector3],
         cols: inout [SIMD4<Float>], idxs: inout [UInt32]
     ) {
         let norm: SCNVector3 = axis == .x ? SCNVector3(1, 0, 0) : SCNVector3(0, 0, 1)
-        let perpSteps = max(nr, 120)
+        let perpSteps = max(nr, 160)
         let perpMax = otherCut >= 0.99 ? topR : otherClipPos
         let perpMin: Float = -topR
         let perpD = (perpMax - perpMin) / Float(perpSteps)
@@ -348,63 +389,79 @@ enum PuckSceneBuilder {
             return field[z][r0] * (1 - frac) + field[z][min(r0 + 1, nr - 1)] * frac
         }
 
+        // Sub-cell z interpolation for smoother gradients
+        let zSubSteps = max(1, 2)  // 2 subdivisions per grid cell
+        let subDz = dz / Float(zSubSteps)
+
         for z in 0..<nz {
-            let zB = min(z + 1, nz - 1)
-            let yT = pH / 2 - Float(z) * dz
-            let yB = yT - dz
-            let rT = rAt(z), rB = rAt(z + 1)
+            for zSub in 0..<zSubSteps {
+                let zFrac0 = Float(zSub) / Float(zSubSteps)
+                let zFrac1 = Float(zSub + 1) / Float(zSubSteps)
+                let zIdx0 = z
+                let zIdx1 = min(z + 1, nz - 1)
+                let yT = pH / 2 - Float(z) * dz - zFrac0 * dz
+                let yB = pH / 2 - Float(z) * dz - zFrac1 * dz
+                let rT = rAt(z) + (rAt(z + 1) - rAt(z)) * zFrac0
+                let rB = rAt(z) + (rAt(z + 1) - rAt(z)) * zFrac1
 
-            for p in 0..<perpSteps {
-                let p0 = perpMin + Float(p) * perpD
-                let p1 = p0 + perpD
-                let pM = (p0 + p1) / 2
-                let distM = sqrt(clipPos * clipPos + pM * pM)
-                guard distM <= max(rT, rB) else { continue }
+                for p in 0..<perpSteps {
+                    let p0 = perpMin + Float(p) * perpD
+                    let p1 = p0 + perpD
+                    let pM = (p0 + p1) / 2
+                    let distM = sqrt(clipPos * clipPos + pM * pM)
+                    guard distM <= max(rT, rB) else { continue }
 
-                // Per-vertex field samples (bilinear)
-                let v_tl = sample(z,  p0, rT)
-                let v_tr = sample(z,  p1, rT)
-                let v_bl = sample(zB, p0, rB)
-                let v_br = sample(zB, p1, rB)
+                    // Per-vertex field samples (bilinear + z interpolation)
+                    let s00 = sample(zIdx0, p0, rAt(zIdx0))
+                    let s01 = sample(zIdx0, p1, rAt(zIdx0))
+                    let s10 = sample(zIdx1, p0, rAt(zIdx1))
+                    let s11 = sample(zIdx1, p1, rAt(zIdx1))
+                    let v_tl = s00 * Double(1 - zFrac0) + s10 * Double(zFrac0)
+                    let v_tr = s01 * Double(1 - zFrac0) + s11 * Double(zFrac0)
+                    let v_bl = s00 * Double(1 - zFrac1) + s10 * Double(zFrac1)
+                    let v_br = s01 * Double(1 - zFrac1) + s11 * Double(zFrac1)
 
-                // Subtle grain noise for coffee texture
-                let grain = (drand48() - 0.5) * 0.06
-                let c_tl = colorSIMD(v_tl + grain, mode: mode)
-                let c_tr = colorSIMD(v_tr + grain, mode: mode)
-                let c_bl = colorSIMD(v_bl + grain, mode: mode)
-                let c_br = colorSIMD(v_br + grain, mode: mode)
+                    // Per-vertex grain noise (simulates coffee ground texture)
+                    let g0 = (drand48() - 0.5) * grainIntensity
+                    let g1 = (drand48() - 0.5) * grainIntensity
+                    let g2 = (drand48() - 0.5) * grainIntensity
+                    let g3 = (drand48() - 0.5) * grainIntensity
+                    let c_tl = colorSIMD(v_tl + g0, mode: mode)
+                    let c_tr = colorSIMD(v_tr + g1, mode: mode)
+                    let c_bl = colorSIMD(v_bl + g2, mode: mode)
+                    let c_br = colorSIMD(v_br + g3, mode: mode)
 
-                let b = UInt32(verts.count)
-                switch axis {
-                case .x:
-                    verts += [SCNVector3(clipPos, yT, p0), SCNVector3(clipPos, yT, p1),
-                              SCNVector3(clipPos, yB, p1), SCNVector3(clipPos, yB, p0)]
-                case .z:
-                    verts += [SCNVector3(p0, yT, clipPos), SCNVector3(p1, yT, clipPos),
-                              SCNVector3(p1, yB, clipPos), SCNVector3(p0, yB, clipPos)]
+                    let b = UInt32(verts.count)
+                    switch axis {
+                    case .x:
+                        verts += [SCNVector3(clipPos, yT, p0), SCNVector3(clipPos, yT, p1),
+                                  SCNVector3(clipPos, yB, p1), SCNVector3(clipPos, yB, p0)]
+                    case .z:
+                        verts += [SCNVector3(p0, yT, clipPos), SCNVector3(p1, yT, clipPos),
+                                  SCNVector3(p1, yB, clipPos), SCNVector3(p0, yB, clipPos)]
+                    }
+                    norms += [norm, norm, norm, norm]
+                    cols += [c_tl, c_tr, c_br, c_bl]
+                    idxs += [b, b+1, b+2, b, b+2, b+3]
                 }
-                norms += [norm, norm, norm, norm]
-                cols += [c_tl, c_tr, c_br, c_bl]
-                idxs += [b, b+1, b+2, b, b+2, b+3]
             }
         }
     }
 
-    // MARK: - Basket Shell (headspace only — not alongside puck)
+    // MARK: - Basket Shell (headspace only — stops at puck top)
 
     private static func addBasketShell(
         to parent: SCNNode, puckHeight pH: Float,
         topR: Float, botR: Float, shellExtra: Float,
-        rAt: (Int) -> Float,
+        rAt: (Int) -> Float, nz: Int,
         xC: Float, zC: Float, cutX: Double, cutZ: Double,
         tSeg: Int
     ) {
         let wall: Float = 0.018
         let shellTop = pH / 2 + shellExtra
-        let puckTop = pH / 2
-        // Only render wall ABOVE the puck (headspace region)
-        let wallH = shellExtra + 0.002
-        let nzW = 6
+        // Wall ONLY above the puck — no overlap with puck surface
+        let wallH = shellExtra
+        let nzW = max(4, Int(wallH / 0.01))
         let dzW = wallH / Float(nzW)
         let dT = Float(2.0 * .pi) / Float(tSeg)
 
@@ -416,11 +473,10 @@ enum PuckSceneBuilder {
             ix += [b, b+1, b+2, b, b+2, b+3]
         }
 
-        // Shell radius follows top of basket (no taper in headspace)
         let rShell = topR + 0.002
         let rOut = rShell + wall
 
-        // Headspace wall
+        // Headspace wall (from shellTop down to puckTop)
         for z in 0..<nzW {
             let yT = shellTop - Float(z) * dzW
             let yB = yT - dzW
@@ -428,11 +484,13 @@ enum PuckSceneBuilder {
                 let t0 = Float(t) * dT, t1 = t0 + dT, mid = (t0 + t1) / 2
                 guard rOut * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
                 guard rOut * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
+                // Outer face
                 addSQ(SCNVector3(rOut*cos(t0), yT, rOut*sin(t0)),
                       SCNVector3(rOut*cos(t1), yT, rOut*sin(t1)),
                       SCNVector3(rOut*cos(t1), yB, rOut*sin(t1)),
                       SCNVector3(rOut*cos(t0), yB, rOut*sin(t0)),
                       n: SCNVector3(cos(mid), 0, sin(mid)))
+                // Inner face
                 addSQ(SCNVector3(rShell*cos(t1), yT, rShell*sin(t1)),
                       SCNVector3(rShell*cos(t0), yT, rShell*sin(t0)),
                       SCNVector3(rShell*cos(t0), yB, rShell*sin(t0)),
@@ -442,11 +500,11 @@ enum PuckSceneBuilder {
         }
 
         // Bottom screen under the puck
-        let rBot = rAt(Int(pH / (pH / Float(128)) + 0.5)) + 0.002  // approximate bottom radius
+        let rBot = rAt(nz) + 0.002
         let yScreen = -pH / 2 - 0.005
-        let screenSeg = min(tSeg, 80)
+        let screenSeg = min(tSeg, 100)
         let sDT = Float(2.0 * .pi) / Float(screenSeg)
-        let rings = 12
+        let rings = 16
         let sDr = rBot / Float(rings)
         for ring in 0..<rings {
             let ri = Float(ring) * sDr, ro = ri + sDr
@@ -520,19 +578,31 @@ enum PuckSceneBuilder {
         parent.addChildNode(n)
     }
 
-    // MARK: - Grind Particles
+    // MARK: - Grind Particles (responsive to grind size and tamp)
 
     private static func addGrindParticles(
         to parent: SCNNode, nz: Int, nr: Int,
         pH: Float, rAt: (Int) -> Float,
-        grind: Double, field: [[Double]], mode: PuckVizMode,
+        grind: Double, tamp: Double,
+        field: [[Double]], mode: PuckVizMode,
         xC: Float, zC: Float, cutX: Double, cutZ: Double
     ) {
-        let pr = CGFloat(max(0.005, grind / 400.0 * 0.010))
-        let sphere = SCNSphere(radius: pr); sphere.segmentCount = 8
+        // Particle radius scales with grind size
+        let pr = CGFloat(max(0.004, grind / 400.0 * 0.009))
+        let sphere = SCNSphere(radius: pr)
+        // Coarser grind = rougher, more angular particles
+        sphere.segmentCount = grind < 350 ? 10 : (grind < 500 ? 8 : 6)
+
         let dzP = pH / Float(nz)
-        let sZ = max(1, nz / 14), sR = max(1, nr / 10)
+        // Tamp affects particle density: heavier tamp = more packed = more particles
+        let tampDensity = 0.7 + (tamp / 30.0) * 0.6 // 0.7-1.3x
+        let baseSpacingZ = max(1, Int(Double(nz) / (14.0 * tampDensity)))
+        let baseSpacingR = max(1, Int(Double(nr) / (10.0 * tampDensity)))
+        let sZ = baseSpacingZ, sR = baseSpacingR
         srand48(123)
+
+        // Particle roughness scales with grind size
+        let particleRoughness = CGFloat(0.80 + min(0.15, grind / 800.0 * 0.15))
 
         for face in 0..<2 {
             let isX = face == 0
@@ -551,10 +621,14 @@ enum PuckSceneBuilder {
                     let j = Float(drand48() - 0.5) * 0.008
                     let m = SCNMaterial()
                     m.diffuse.contents = pColor(CGFloat(col.x)*0.7, CGFloat(col.y)*0.7, CGFloat(col.z)*0.7)
-                    m.lightingModel = .physicallyBased; m.roughness.contents = 0.92
+                    m.lightingModel = .physicallyBased
+                    m.roughness.contents = particleRoughness
                     sphere.materials = [m]
                     let n = SCNNode(geometry: sphere.copy() as? SCNGeometry ?? sphere)
                     n.position = isX ? SCNVector3(clip+j, yP, rP) : SCNVector3(rP, yP, clip+j)
+                    // Slight random scale variation (grind distribution)
+                    let scaleVar = Float(0.7 + drand48() * 0.6) // 0.7-1.3x
+                    n.scale = SCNVector3(scaleVar, scaleVar, scaleVar)
                     parent.addChildNode(n)
                 }
             }
@@ -573,7 +647,7 @@ enum PuckSceneBuilder {
         let vF = result.velocityField
         let pMax = result.grid.flatMap { $0 }.map { $0.flowMagnitude }.max() ?? 1e-10
         let maxL = dzF * 2.5
-        let sZ = max(1, nz / 10), sR = max(1, nr / 6)
+        let sZ = max(1, nz / 12), sR = max(1, nr / 8)
 
         for face in 0..<2 {
             let isX = face == 0
@@ -629,7 +703,7 @@ enum PuckSceneBuilder {
         }
         let a = SCNNode(); a.light = SCNLight()
         a.light?.type = .ambient; a.light?.intensity = 400
-        a.light?.color = pColor(0.80, 0.78, 0.75) // warm ambient
+        a.light?.color = pColor(0.80, 0.78, 0.75)
         root.addChildNode(a)
 
         light(.directional, 1000, 1.0, 0.97, 0.92, pos: SCNVector3(2, 3, 2), shadow: true)
