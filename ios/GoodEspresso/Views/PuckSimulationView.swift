@@ -232,6 +232,7 @@ struct PuckSimulationView: View {
                         mode: vizMode,
                         basketSpec: params.basket,
                         grindSizeMicrons: params.grindSizeMicrons,
+                        tampPressureKg: params.tampPressureKg,
                         animationProgress: animationProgress,
                         cutX: cutX,
                         cutZ: cutZ

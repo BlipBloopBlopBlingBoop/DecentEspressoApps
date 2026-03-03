@@ -207,7 +207,7 @@ struct PuckCFDSolver {
     // MARK: - Main Simulation
 
     /// Run full 2D axisymmetric puck simulation
-    static func simulate(params: PuckParameters, gridRows: Int = 128, gridCols: Int = 80) -> PuckSimulationResult {
+    static func simulate(params: PuckParameters, gridRows: Int = 192, gridCols: Int = 100) -> PuckSimulationResult {
         let nz = gridRows  // axial divisions (top to bottom)
         let nr = gridCols  // radial divisions (center to wall)
 
@@ -239,32 +239,89 @@ struct PuckCFDSolver {
         for z in 0..<nz {
             for r in 0..<nr {
                 var localK = baseK
-
-                // Edge effect: porosity is ~15-25% higher near basket walls
                 let rNorm = Double(r) / Double(nr - 1)
-                if rNorm > 0.85 {
-                    let edgeFactor = 1.0 + 0.25 * ((rNorm - 0.85) / 0.15)
+                let zNorm = Double(z) / Double(nz - 1)
+                let rPos = (Double(r) + 0.5) * dr
+
+                // Wall boundary layer: porosity is 15-50% higher near basket
+                // walls due to geometric packing constraints against a flat
+                // surface. This is the primary cause of "donut" channeling.
+                if rNorm > 0.78 {
+                    let edgeFactor = 1.0 + 0.55 * pow((rNorm - 0.78) / 0.22, 0.7)
                     localK *= edgeFactor
                 }
 
-                // Bottom compaction: fines migration increases resistance at bottom
-                let zNorm = Double(z) / Double(nz - 1)
-                if zNorm > 0.7 {
-                    let finesFactor = 1.0 - 0.20 * ((zNorm - 0.7) / 0.3)
+                // Center axis packing irregularity
+                if rNorm < 0.08 {
+                    localK *= 1.0 + 0.12 * (1.0 - rNorm / 0.08)
+                }
+
+                // Bottom compaction: fines migration increases resistance
+                // at the bottom of the puck (gravity + flow drag)
+                if zNorm > 0.65 {
+                    let finesFactor = 1.0 - 0.30 * pow((zNorm - 0.65) / 0.35, 1.3)
                     localK *= finesFactor
+                }
+
+                // Bottom filter screen mesh effect: discrete basket holes
+                // create localized high-flow spots in the last ~12% of depth.
+                // Modeled as radial ring pattern from concentric hole rows.
+                if zNorm > 0.88 {
+                    let screenProximity = (zNorm - 0.88) / 0.12
+                    let holesPerRing = max(4.0, sqrt(Double(params.basket.holeCount)))
+                    let ringSpacing = radiusM / (holesPerRing / (2.0 * .pi))
+                    let ringPhase = sin(rPos / max(1e-6, ringSpacing) * 2.0 * .pi * 3.0)
+                    localK *= max(0.55, 1.0 + screenProximity * 0.45 * ringPhase)
+                }
+
+                // Top entry loosening: water impact disrupts surface packing
+                if zNorm < 0.06 {
+                    localK *= 1.0 + 0.18 * (1.0 - zNorm / 0.06)
                 }
 
                 // Distribution quality noise
                 let noise = (drand48() - 0.5) * 2.0 * variationScale
-                // Exponential so it's always positive, centered around 1
                 localK *= exp(noise * 0.8)
 
-                // Moisture: higher moisture = swollen particles = lower permeability
-                // Already accounted for in porosity, but add local variation
+                // Moisture variation
                 let moistureNoise = 1.0 - params.moistureContent * 0.3 * drand48()
                 localK *= moistureNoise
 
-                permField[z][r] = max(localK * 0.1, localK)  // floor at 10% of base
+                permField[z][r] = max(localK * 0.1, localK)
+            }
+        }
+
+        // MARK: Seed channeling defects
+        // Poor distribution creates preferential flow paths (channels).
+        // These are vertical corridors of elevated permeability where particles
+        // are loosely packed — a direct consequence of uneven distribution.
+        // Channels self-reinforce: faster flow washes fines away, further
+        // increasing permeability. We model the steady-state result.
+        let channelSeverity = max(0.0, 1.0 - params.distributionQuality)
+        let numChannels = Int(channelSeverity * 10.0) // 0-7 channels
+        if numChannels > 0 {
+            // Deterministic seed based on recipe parameters
+            srand48(Int(params.doseGrams * 1000) + Int(params.grindSizeMicrons) + 17)
+            for _ in 0..<numChannels {
+                // Channel center (avoid very edge and very center)
+                let channelR = Int(drand48() * Double(nr - 8)) + 4
+                let widthCells = max(2, Int(Double(nr) * 0.04 * (1.0 + drand48())))
+                // Amplification includes positive feedback (fines migration)
+                let amp = 2.0 + channelSeverity * 6.0 * drand48()
+                var curR = channelR
+                for z in 0..<nz {
+                    // Slight lateral meander (channels aren't perfectly straight)
+                    if drand48() < 0.15 {
+                        curR += drand48() < 0.5 ? 1 : -1
+                        curR = max(3, min(nr - 4, curR))
+                    }
+                    for off in -widthCells/2...widthCells/2 {
+                        let r = max(0, min(nr - 1, curR + off))
+                        let d = Double(abs(off))
+                        let gauss = exp(-d * d / max(1.0, Double(widthCells) * 0.5))
+                        permField[z][r] *= 1.0 + (amp - 1.0) * gauss
+                    }
+                }
             }
         }
 
@@ -429,22 +486,47 @@ struct PuckCFDSolver {
 
         for r in 0..<nr {
             var cumExtraction = 0.0
+            let rNorm = Double(r) / Double(nr - 1)
             for z in 0..<nz {
                 let v = grid[z][r].flowMagnitude
                 let k = permField[z][r]
                 let kNorm = k / (baseK + 1e-30)
+                let zNorm = Double(z) / Double(nz - 1)
 
                 // Contact time factor: slower flow = more extraction
                 let contactFactor = meanVel / (v + 1e-10)
-                // Depth increment: each layer adds extraction proportional to contact
                 let layerExtraction = min(0.08, contactFactor * 0.03 / kNorm)
                 cumExtraction += layerExtraction
 
-                // Radial variation: edge channels extract less (faster flow near wall)
-                let rNorm = Double(r) / Double(nr - 1)
-                let edgePenalty = rNorm > 0.8 ? 1.0 - (rNorm - 0.8) * 2.0 : 1.0
+                // Wall boundary layer: higher porosity near wall means
+                // faster flow and reduced extraction at the basket edge
+                let wallEffect: Double
+                if rNorm > 0.82 {
+                    wallEffect = 1.0 - (rNorm - 0.82) * 2.8
+                } else if rNorm < 0.06 {
+                    // Center axis: mild extraction reduction
+                    wallEffect = 0.92 + rNorm / 0.06 * 0.08
+                } else {
+                    wallEffect = 1.0
+                }
 
-                grid[z][r].extractionLevel = min(1.0, cumExtraction * edgePenalty)
+                // Bottom boundary layer: filter screen creates localized
+                // over-extraction directly above holes (high-velocity jets)
+                // and under-extraction between holes (stagnant zones)
+                var bottomBL = 1.0
+                if zNorm > 0.90 {
+                    let proximity = (zNorm - 0.90) / 0.10
+                    // Faster cells near screen holes → under-extract (quick transit)
+                    let localFlowRatio = v / (meanVel + 1e-10)
+                    if localFlowRatio > 1.3 {
+                        bottomBL = 1.0 - proximity * 0.3 * min(2.0, localFlowRatio - 1.0)
+                    } else {
+                        // Stagnant zones between holes → over-extract
+                        bottomBL = 1.0 + proximity * 0.15
+                    }
+                }
+
+                grid[z][r].extractionLevel = min(1.0, cumExtraction * max(0.1, wallEffect) * bottomBL)
             }
         }
 
