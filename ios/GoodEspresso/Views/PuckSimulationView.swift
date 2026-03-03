@@ -57,6 +57,8 @@ struct PuckSimulationView: View {
     @State private var cutX: Double = 0.55   // 0 = cut to center, 1 = no cut
     @State private var cutZ: Double = 0.55   // 0 = cut to center, 1 = no cut
     @State private var showGestureHints = true
+    @State private var useProfileMode = false  // false=manual, true=sync to profile
+    @State private var profileCurvePoints: [ShotDataPoint] = []
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
@@ -139,6 +141,7 @@ struct PuckSimulationView: View {
     private var compactLayout: some View {
         LazyVStack(spacing: 16) {
             basketSelector
+            profileCard
             visualizationCard
             parameterSliders
         }
@@ -152,8 +155,11 @@ struct PuckSimulationView: View {
             basketSelector
 
             HStack(alignment: .top, spacing: 20) {
-                visualizationCard
-                    .frame(maxWidth: .infinity)
+                VStack(spacing: 16) {
+                    visualizationCard
+                    profileCard
+                }
+                .frame(maxWidth: .infinity)
 
                 parameterSliders
                     .frame(maxWidth: 400)
@@ -217,6 +223,152 @@ struct PuckSimulationView: View {
             }
         }
         .analyticsCard()
+    }
+
+    // MARK: - Profile Card (pressure-flow curve + mode toggle)
+
+    private var profileCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with mode toggle
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg")
+                    .foregroundStyle(.cyan)
+                Text("Profile")
+                    .font(.headline)
+
+                Spacer()
+
+                // Mode toggle: Manual vs Profile
+                Picker("Mode", selection: $useProfileMode) {
+                    Text("Manual").tag(false)
+                    Text("Profile").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 160)
+
+                if machineStore.isConnected {
+                    Button {
+                        withAnimation { isLiveMode.toggle() }
+                    } label: {
+                        Image(systemName: isLiveMode
+                              ? "antenna.radiowaves.left.and.right.circle.fill"
+                              : "antenna.radiowaves.left.and.right.circle")
+                            .foregroundStyle(isLiveMode ? .green : .secondary)
+                            .font(.body)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if useProfileMode {
+                // Profile selector
+                if let recipe = machineStore.activeRecipe {
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(recipe.name)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            if let desc = recipe.notes ?? Optional(recipe.description) {
+                                Text(desc)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+
+                        Spacer()
+
+                        // Step summary pills
+                        ForEach(recipe.steps) { step in
+                            VStack(spacing: 1) {
+                                Text(step.name)
+                                    .font(.system(size: 8, weight: .medium))
+                                Text("\(String(format: "%.0f", step.pressure))bar")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.cyan)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.cyan.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                }
+
+                // Profile selector scroll
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(machineStore.recipes.filter {
+                            !$0.id.contains("tea") && !$0.id.contains("herbal")
+                        }) { recipe in
+                            Button {
+                                machineStore.setActiveRecipe(recipe)
+                                syncFromProfile()
+                            } label: {
+                                Text(recipe.name)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(
+                                        machineStore.activeRecipe?.id == recipe.id
+                                        ? .white : .secondary
+                                    )
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        machineStore.activeRecipe?.id == recipe.id
+                                        ? Color.cyan.opacity(0.3) : Color.tertiarySystemGroupedBg
+                                    )
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Pressure-flow chart from profile
+                if !profileCurvePoints.isEmpty {
+                    ProfileCurveChart(
+                        points: profileCurvePoints,
+                        isLive: isLiveMode,
+                        livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : []
+                    )
+                    .frame(height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                // Status
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(isLiveMode ? .green : .cyan)
+                        .frame(width: 6, height: 6)
+                    Text(isLiveMode
+                         ? "Synced to machine \u{2014} params update live"
+                         : "Offline \u{2014} simulation uses profile parameters")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                // Manual mode hint
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Adjust parameters manually with sliders below")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .analyticsCard()
+        .onChangeCompat(of: useProfileMode) {
+            if useProfileMode {
+                syncFromProfile()
+            }
+        }
+        .onChangeCompat(of: machineStore.activeRecipe?.id) {
+            if useProfileMode {
+                syncFromProfile()
+            }
+        }
     }
 
     // MARK: - Visualization Card (immersive dark layout)
@@ -712,6 +864,78 @@ struct PuckSimulationView: View {
         }
     }
 
+    // MARK: - Profile Sync
+
+    private func syncFromProfile() {
+        guard let recipe = machineStore.activeRecipe else { return }
+        // Pull parameters from the profile
+        if let dose = recipe.dose, dose > 0 {
+            params.doseGrams = dose
+        }
+        // Use the main extraction step's pressure and temperature
+        if let mainStep = recipe.steps.last(where: { $0.pressure > 0 }) {
+            params.brewPressureBar = mainStep.pressure
+            params.waterTempC = mainStep.temperature
+        }
+        // Generate curve data points for the chart
+        profileCurvePoints = generateProfileCurve(from: recipe)
+    }
+
+    private func generateProfileCurve(from recipe: Recipe) -> [ShotDataPoint] {
+        var points: [ShotDataPoint] = []
+        var time: Double = 0  // milliseconds
+
+        for (i, step) in recipe.steps.enumerated() {
+            let prevP = i > 0 ? recipe.steps[i-1].pressure : 0
+            let prevF = i > 0 ? recipe.steps[i-1].flow : 0
+            let prevT = i > 0 ? recipe.steps[i-1].temperature : step.temperature
+
+            // Estimate step duration
+            let duration: Double
+            switch step.exit.type {
+            case .time:
+                duration = step.exit.value * 1000
+            case .weight:
+                duration = step.exit.value / max(0.1, step.flow) * 1000
+            default:
+                duration = 10000
+            }
+
+            let transitionTime: Double = step.transition == "smooth"
+                ? min(3000, duration * 0.3) : 200
+
+            // Transition phase
+            let transSteps = max(1, Int(transitionTime / 400))
+            for t in 0..<transSteps {
+                let frac = Double(t) / Double(transSteps)
+                points.append(ShotDataPoint(
+                    timestamp: time + frac * transitionTime,
+                    temperature: prevT + (step.temperature - prevT) * frac,
+                    pressure: prevP + (step.pressure - prevP) * frac,
+                    flow: prevF + (step.flow - prevF) * frac,
+                    weight: 0
+                ))
+            }
+
+            // Steady state phase
+            let steadyTime = max(0, duration - transitionTime)
+            let steadySteps = max(1, Int(steadyTime / 800))
+            for t in 0...steadySteps {
+                let frac = Double(t) / Double(steadySteps)
+                points.append(ShotDataPoint(
+                    timestamp: time + transitionTime + frac * steadyTime,
+                    temperature: step.temperature,
+                    pressure: step.pressure,
+                    flow: step.flow,
+                    weight: 0
+                ))
+            }
+
+            time += duration
+        }
+        return points
+    }
+
     // MARK: - Simulation Runner
 
     private func runSimulation() async {
@@ -990,5 +1214,125 @@ struct ParameterInfoSheet: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Profile Curve Chart (compact pressure-flow over time)
+
+struct ProfileCurveChart: View {
+    let points: [ShotDataPoint]
+    let isLive: Bool
+    let livePoints: [ShotDataPoint]
+
+    var maxTime: Double {
+        max(points.last?.timestamp ?? 30000, 10000)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                // Background
+                Color(red: 0.06, green: 0.06, blue: 0.09)
+
+                // Grid
+                Canvas { context, size in
+                    let gridColor = Color.white.opacity(0.06)
+                    for i in 1..<4 {
+                        let y = CGFloat(i) * size.height / 4
+                        var path = Path()
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: size.width, y: y))
+                        context.stroke(path, with: .color(gridColor), lineWidth: 0.5)
+                    }
+                    for i in 1..<4 {
+                        let x = CGFloat(i) * size.width / 4
+                        var path = Path()
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: size.height))
+                        context.stroke(path, with: .color(gridColor), lineWidth: 0.5)
+                    }
+                }
+
+                // Profile pressure line (blue)
+                if !points.isEmpty {
+                    Path { path in
+                        for (i, p) in points.enumerated() {
+                            let x = (p.timestamp / maxTime) * geo.size.width
+                            let y = geo.size.height - (p.pressure / 12.0) * geo.size.height
+                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                            else { path.addLine(to: CGPoint(x: x, y: y)) }
+                        }
+                    }
+                    .stroke(Color.blue.opacity(0.8), lineWidth: 2)
+
+                    // Profile flow line (cyan)
+                    Path { path in
+                        for (i, p) in points.enumerated() {
+                            let x = (p.timestamp / maxTime) * geo.size.width
+                            let y = geo.size.height - (p.flow / 6.0) * geo.size.height
+                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                            else { path.addLine(to: CGPoint(x: x, y: y)) }
+                        }
+                    }
+                    .stroke(Color.cyan.opacity(0.6), lineWidth: 1.5)
+                }
+
+                // Live overlay (thicker, brighter)
+                if isLive && !livePoints.isEmpty {
+                    Path { path in
+                        for (i, p) in livePoints.enumerated() {
+                            let x = (p.timestamp / maxTime) * geo.size.width
+                            let y = geo.size.height - (p.pressure / 12.0) * geo.size.height
+                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                            else { path.addLine(to: CGPoint(x: x, y: y)) }
+                        }
+                    }
+                    .stroke(Color.blue, lineWidth: 3)
+
+                    Path { path in
+                        for (i, p) in livePoints.enumerated() {
+                            let x = (p.timestamp / maxTime) * geo.size.width
+                            let y = geo.size.height - (p.flow / 6.0) * geo.size.height
+                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                            else { path.addLine(to: CGPoint(x: x, y: y)) }
+                        }
+                    }
+                    .stroke(Color.cyan, lineWidth: 2.5)
+                }
+
+                // Axis labels
+                VStack {
+                    HStack {
+                        HStack(spacing: 10) {
+                            HStack(spacing: 3) {
+                                RoundedRectangle(cornerRadius: 1)
+                                    .fill(Color.blue)
+                                    .frame(width: 10, height: 2.5)
+                                Text("bar")
+                            }
+                            HStack(spacing: 3) {
+                                RoundedRectangle(cornerRadius: 1)
+                                    .fill(Color.cyan)
+                                    .frame(width: 10, height: 2.5)
+                                Text("ml/s")
+                            }
+                        }
+                        .font(.system(size: 8))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(.leading, 6)
+                        .padding(.top, 4)
+
+                        Spacer()
+
+                        Text(String(format: "%.0fs", maxTime / 1000))
+                            .font(.system(size: 8))
+                            .foregroundStyle(.white.opacity(0.3))
+                            .padding(.trailing, 6)
+                            .padding(.top, 4)
+                    }
+                    Spacer()
+                }
+            }
+        }
     }
 }

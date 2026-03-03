@@ -162,7 +162,7 @@ enum PuckSceneBuilder {
         let nz = result.gridRows
         let nr = result.gridCols
         let isAnim = animationProgress < 1.0
-        let thetaSeg = isAnim ? 160 : 240
+        let thetaSeg = isAnim ? 200 : 300
 
         let rawField = selectField(result: result, mode: mode)
         let field = applyAnimationProgress(to: rawField, progress: animationProgress, mode: mode)
@@ -322,14 +322,14 @@ enum PuckSceneBuilder {
         let puckGeo = buildGeometry(vertices: verts, normals: norms, colors: cols, indices: idxs)
         let puckMat = SCNMaterial()
         puckMat.lightingModel = .physicallyBased
-        // Roughness: coarser grind = rougher surface, finer = smoother
+        puckMat.isDoubleSided = true  // ensures top face visible from all angles
+        // Roughness: coarser grind = rougher, finer = smoother
+        // Heavy tamp = slightly smoother (compacted surface)
         let grindNorm = min(1.0, grindSizeMicrons / 800.0)
-        puckMat.roughness.contents = 0.75 + grindNorm * 0.20  // 0.75-0.95
-        puckMat.metalness.contents = 0.02
-        // Tamp: heavier tamp = slightly more specular (smoother compacted surface)
         let tampNorm = min(1.0, tampPressureKg / 30.0)
-        let roughAdj = CGFloat(puckMat.roughness.contents as? Double ?? 0.88) - CGFloat(tampNorm * 0.08)
-        puckMat.roughness.contents = roughAdj
+        let roughness = 0.75 + grindNorm * 0.20 - tampNorm * 0.08
+        puckMat.roughness.contents = CGFloat(roughness)
+        puckMat.metalness.contents = CGFloat(0.02)
         puckGeo.materials = [puckMat]
         root.addChildNode(SCNNode(geometry: puckGeo))
 
@@ -339,6 +339,22 @@ enum PuckSceneBuilder {
                        shellExtra: shellExtra, rAt: rAt, nz: nz,
                        xC: xC, zC: zC, cutX: cutX, cutZ: cutZ, tSeg: thetaSeg)
         addBasketRim(to: root, radius: topR + 0.04, y: pH / 2 + shellExtra)
+
+        // MARK: Showerhead screen (group head dispersion screen above puck)
+        let showerY = pH / 2 + shellExtra - 0.01
+        addScreenDisc(to: root, y: showerY, radius: topR - 0.01,
+                      holeRings: 8, holesPerRing: 16, holeRadius: 0.012,
+                      xC: xC, zC: zC, cutX: cutX, cutZ: cutZ, tSeg: thetaSeg,
+                      color: (r: 0.68, g: 0.68, b: 0.72))
+
+        // MARK: Basket bottom screen (filter screen under puck)
+        let screenY = -pH / 2 - 0.005
+        let rBot = rAt(nz) + 0.002
+        addScreenDisc(to: root, y: screenY, radius: rBot,
+                      holeRings: 10, holesPerRing: Int(sqrt(Double(basketSpec.holeCount))),
+                      holeRadius: Float(basketSpec.holeDiameter) / Float(basketSpec.diameter) * 2.0,
+                      xC: xC, zC: zC, cutX: cutX, cutZ: cutZ, tSeg: min(thetaSeg, 120),
+                      color: (r: 0.72, g: 0.72, b: 0.75))
 
         // Decorations (skip during animation for performance)
         if (cutX < 0.99 || cutZ < 0.99) && !isAnim {
@@ -499,27 +515,7 @@ enum PuckSceneBuilder {
             }
         }
 
-        // Bottom screen under the puck
-        let rBot = rAt(nz) + 0.002
-        let yScreen = -pH / 2 - 0.005
-        let screenSeg = min(tSeg, 100)
-        let sDT = Float(2.0 * .pi) / Float(screenSeg)
-        let rings = 16
-        let sDr = rBot / Float(rings)
-        for ring in 0..<rings {
-            let ri = Float(ring) * sDr, ro = ri + sDr
-            for t in 0..<screenSeg {
-                let t0 = Float(t) * sDT, t1 = t0 + sDT, mid = (t0 + t1) / 2
-                let rm = (ri + ro) / 2
-                guard rm * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
-                guard rm * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
-                addSQ(SCNVector3(ri*cos(t0), yScreen, ri*sin(t0)),
-                      SCNVector3(ro*cos(t0), yScreen, ro*sin(t0)),
-                      SCNVector3(ro*cos(t1), yScreen, ro*sin(t1)),
-                      SCNVector3(ri*cos(t1), yScreen, ri*sin(t1)),
-                      n: SCNVector3(0, -1, 0))
-            }
-        }
+        // (Bottom screen now rendered by shared addScreenDisc helper)
 
         // Top annulus
         for t in 0..<tSeg {
@@ -563,6 +559,95 @@ enum PuckSceneBuilder {
         )
         let el = SCNGeometryElement(indices: indices, primitiveType: .triangles)
         return SCNGeometry(sources: [vSrc, nSrc, cSrc], elements: [el])
+    }
+
+    // MARK: - Screen Disc (shared: showerhead + basket screen)
+    // Renders a metallic disc with concentric hole rings at the given y position.
+
+    private static func addScreenDisc(
+        to parent: SCNNode, y: Float, radius: Float,
+        holeRings: Int, holesPerRing: Int, holeRadius: Float,
+        xC: Float, zC: Float, cutX: Double, cutZ: Double,
+        tSeg: Int, color: (r: CGFloat, g: CGFloat, b: CGFloat)
+    ) {
+        var vs: [SCNVector3] = [], ns: [SCNVector3] = [], ix: [UInt32] = []
+        let norm = SCNVector3(0, y > 0 ? 1 : -1, 0)
+
+        func addSQ(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3, _ v3: SCNVector3) {
+            let b = UInt32(vs.count)
+            vs += [v0, v1, v2, v3]; ns += [norm, norm, norm, norm]
+            ix += [b, b+1, b+2, b, b+2, b+3]
+        }
+
+        // Build set of hole center positions (ring, angle)
+        var holeCenters: [(r: Float, theta: Float)] = []
+        for ring in 1...holeRings {
+            let ringR = Float(ring) / Float(holeRings + 1) * radius
+            let nHoles = holesPerRing * ring / holeRings + max(4, holesPerRing / 3)
+            for h in 0..<nHoles {
+                let theta = Float(h) / Float(nHoles) * 2.0 * .pi
+                holeCenters.append((r: ringR, theta: theta))
+            }
+        }
+
+        let screenSeg = min(tSeg, 120)
+        let rings = max(12, holeRings * 2)
+        let dT = Float(2.0 * .pi) / Float(screenSeg)
+        let dr = radius / Float(rings)
+        let effHoleR = min(holeRadius, dr * 0.8)
+
+        for ring in 0..<rings {
+            let ri = Float(ring) * dr, ro = ri + dr
+            let rm = (ri + ro) / 2
+            for t in 0..<screenSeg {
+                let t0 = Float(t) * dT, t1 = t0 + dT
+                let mid = (t0 + t1) / 2
+                guard rm * cos(mid) <= xC + 0.02 || cutX >= 0.99 else { continue }
+                guard rm * sin(mid) <= zC + 0.02 || cutZ >= 0.99 else { continue }
+
+                // Check if this cell overlaps any hole center
+                let cellR = rm
+                let cellTheta = mid
+                var isHole = false
+                for hc in holeCenters {
+                    let dx = cellR * cos(cellTheta) - hc.r * cos(hc.theta)
+                    let dz = cellR * sin(cellTheta) - hc.r * sin(hc.theta)
+                    if sqrt(dx*dx + dz*dz) < effHoleR {
+                        isHole = true
+                        break
+                    }
+                }
+                guard !isHole else { continue }
+
+                if y > 0 {
+                    // Top-facing (showerhead)
+                    addSQ(SCNVector3(ri*cos(t0), y, ri*sin(t0)),
+                          SCNVector3(ro*cos(t0), y, ro*sin(t0)),
+                          SCNVector3(ro*cos(t1), y, ro*sin(t1)),
+                          SCNVector3(ri*cos(t1), y, ri*sin(t1)))
+                } else {
+                    // Bottom-facing (basket screen)
+                    addSQ(SCNVector3(ri*cos(t1), y, ri*sin(t1)),
+                          SCNVector3(ro*cos(t1), y, ro*sin(t1)),
+                          SCNVector3(ro*cos(t0), y, ro*sin(t0)),
+                          SCNVector3(ri*cos(t0), y, ri*sin(t0)))
+                }
+            }
+        }
+
+        guard !vs.isEmpty else { return }
+        let vSrc = SCNGeometrySource(vertices: vs)
+        let nSrc = SCNGeometrySource(normals: ns)
+        let el = SCNGeometryElement(indices: ix, primitiveType: .triangles)
+        let geo = SCNGeometry(sources: [vSrc, nSrc], elements: [el])
+        let mat = SCNMaterial()
+        mat.lightingModel = .physicallyBased
+        mat.diffuse.contents = pColor(color.r, color.g, color.b)
+        mat.metalness.contents = 0.90
+        mat.roughness.contents = 0.25
+        mat.isDoubleSided = true
+        geo.materials = [mat]
+        parent.addChildNode(SCNNode(geometry: geo))
     }
 
     // MARK: - Basket Rim
@@ -706,7 +791,7 @@ enum PuckSceneBuilder {
         a.light?.color = pColor(0.80, 0.78, 0.75)
         root.addChildNode(a)
 
-        light(.directional, 1000, 1.0, 0.97, 0.92, pos: SCNVector3(2, 3, 2), shadow: true)
+        light(.directional, 1000, 1.0, 0.97, 0.92, pos: SCNVector3(2, 3, 2))
         light(.directional, 350, 0.6, 0.7, 1.0, pos: SCNVector3(-2, 0.5, 1))
         light(.directional, 250, 0.5, 0.6, 1.0, pos: SCNVector3(0, -2, -1))
     }
