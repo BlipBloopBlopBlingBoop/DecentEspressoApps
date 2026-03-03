@@ -57,8 +57,9 @@ struct PuckSimulationView: View {
     @State private var cutX: Double = 0.55   // 0 = cut to center, 1 = no cut
     @State private var cutZ: Double = 0.55   // 0 = cut to center, 1 = no cut
     @State private var showGestureHints = true
-    @State private var useProfileMode = false  // false=manual, true=sync to profile
+    @State private var useProfileMode = false
     @State private var profileCurvePoints: [ShotDataPoint] = []
+    @State private var animationTimeMs: Double = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
@@ -111,6 +112,7 @@ struct PuckSimulationView: View {
                 // Stop animation and reset to final state on parameter change
                 isAnimating = false
                 animationProgress = 1.0
+                animationTimeMs = 0
                 // Debounced auto-run: increment serial, wait, check if still current
                 simulationSerial += 1
                 let serial = simulationSerial
@@ -324,27 +326,39 @@ struct PuckSimulationView: View {
                     }
                 }
 
-                // Pressure-flow chart from profile
+                // Pressure-flow chart from profile with playback cursor
                 if !profileCurvePoints.isEmpty {
                     ProfileCurveChart(
                         points: profileCurvePoints,
                         isLive: isLiveMode,
-                        livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : []
+                        livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : [],
+                        cursorTimeMs: isAnimating ? animationTimeMs : nil
                     )
                     .frame(height: 120)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
+                // Current step readout during animation
+                if isAnimating, let recipe = machineStore.activeRecipe {
+                    profileStepReadout(recipe: recipe)
+                }
+
                 // Status
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(isLiveMode ? .green : .cyan)
+                        .fill(isAnimating ? .orange : (isLiveMode ? .green : .cyan))
                         .frame(width: 6, height: 6)
-                    Text(isLiveMode
-                         ? "Synced to machine \u{2014} params update live"
-                         : "Offline \u{2014} simulation uses profile parameters")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    if isAnimating {
+                        Text("Playing profile \u{2014} \(String(format: "%.1fs", animationTimeMs / 1000))")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text(isLiveMode
+                             ? "Synced to machine \u{2014} params update live"
+                             : "Offline \u{2014} simulation uses profile parameters")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else {
                 // Manual mode hint
@@ -852,6 +866,66 @@ struct PuckSimulationView: View {
         .analyticsCard()
     }
 
+    // MARK: - Profile Step Readout (during animation)
+
+    private func profileStepReadout(recipe: Recipe) -> some View {
+        let currentStep = currentProfileStep(recipe: recipe, timeMs: animationTimeMs)
+        let cursorPoint = profileCurvePoints.last(where: { $0.timestamp <= animationTimeMs })
+
+        return HStack(spacing: 12) {
+            if let step = currentStep {
+                HStack(spacing: 4) {
+                    Circle().fill(.cyan).frame(width: 5, height: 5)
+                    Text(step.name)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+            if let pt = cursorPoint {
+                HStack(spacing: 3) {
+                    Image(systemName: "gauge")
+                        .font(.system(size: 8))
+                    Text(String(format: "%.1f bar", pt.pressure))
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.blue)
+                }
+                HStack(spacing: 3) {
+                    Image(systemName: "drop")
+                        .font(.system(size: 8))
+                    Text(String(format: "%.1f ml/s", pt.flow))
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.cyan)
+                }
+                HStack(spacing: 3) {
+                    Image(systemName: "thermometer.medium")
+                        .font(.system(size: 8))
+                    Text(String(format: "%.0f\u{00B0}C", pt.temperature))
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color(red: 0.08, green: 0.08, blue: 0.12))
+        .clipShape(Capsule())
+    }
+
+    private func currentProfileStep(recipe: Recipe, timeMs: Double) -> ProfileStep? {
+        var elapsed: Double = 0
+        for step in recipe.steps {
+            let duration: Double
+            switch step.exit.type {
+            case .time: duration = step.exit.value * 1000
+            case .weight: duration = step.exit.value / max(0.1, step.flow) * 1000
+            default: duration = 10000
+            }
+            if timeMs < elapsed + duration { return step }
+            elapsed += duration
+        }
+        return recipe.steps.last
+    }
+
     // MARK: - Live Machine Sync
 
     private func syncFromMachine() {
@@ -868,43 +942,35 @@ struct PuckSimulationView: View {
 
     private func syncFromProfile() {
         guard let recipe = machineStore.activeRecipe else { return }
-        // Pull parameters from the profile
         if let dose = recipe.dose, dose > 0 {
             params.doseGrams = dose
         }
-        // Use the main extraction step's pressure and temperature
         if let mainStep = recipe.steps.last(where: { $0.pressure > 0 }) {
             params.brewPressureBar = mainStep.pressure
             params.waterTempC = mainStep.temperature
         }
-        // Generate curve data points for the chart
         profileCurvePoints = generateProfileCurve(from: recipe)
     }
 
     private func generateProfileCurve(from recipe: Recipe) -> [ShotDataPoint] {
         var points: [ShotDataPoint] = []
-        var time: Double = 0  // milliseconds
+        var time: Double = 0
 
         for (i, step) in recipe.steps.enumerated() {
             let prevP = i > 0 ? recipe.steps[i-1].pressure : 0
             let prevF = i > 0 ? recipe.steps[i-1].flow : 0
             let prevT = i > 0 ? recipe.steps[i-1].temperature : step.temperature
 
-            // Estimate step duration
             let duration: Double
             switch step.exit.type {
-            case .time:
-                duration = step.exit.value * 1000
-            case .weight:
-                duration = step.exit.value / max(0.1, step.flow) * 1000
-            default:
-                duration = 10000
+            case .time: duration = step.exit.value * 1000
+            case .weight: duration = step.exit.value / max(0.1, step.flow) * 1000
+            default: duration = 10000
             }
 
             let transitionTime: Double = step.transition == "smooth"
                 ? min(3000, duration * 0.3) : 200
 
-            // Transition phase
             let transSteps = max(1, Int(transitionTime / 400))
             for t in 0..<transSteps {
                 let frac = Double(t) / Double(transSteps)
@@ -917,7 +983,6 @@ struct PuckSimulationView: View {
                 ))
             }
 
-            // Steady state phase
             let steadyTime = max(0, duration - transitionTime)
             let steadySteps = max(1, Int(steadyTime / 800))
             for t in 0...steadySteps {
@@ -956,23 +1021,62 @@ struct PuckSimulationView: View {
         if isAnimating {
             isAnimating = false
             animationProgress = 1.0
+            animationTimeMs = 0
             return
         }
         animationProgress = 0
+        animationTimeMs = 0
         isAnimating = true
         Task { @MainActor in
-            // Animation duration matches estimated shot time, clamped to 10-40s
-            let duration = min(40.0, max(10.0, result?.effectiveShotTime ?? 25.0))
             let fps: Double = 15
             let dt = 1.0 / fps
-            let progressPerFrame = dt / duration
-            while isAnimating && animationProgress < 1.0 {
-                try? await Task.sleep(nanoseconds: UInt64(dt * 1_000_000_000))
-                guard isAnimating else { break }
-                animationProgress = min(1.0, animationProgress + progressPerFrame)
+
+            if useProfileMode && !profileCurvePoints.isEmpty {
+                // Profile-synced animation: follow the profile timeline
+                let totalTimeMs = profileCurvePoints.last?.timestamp ?? 30000
+                let totalTimeSec = totalTimeMs / 1000.0
+                let duration = min(45.0, max(8.0, totalTimeSec))
+                let timeScale = totalTimeMs / duration
+
+                // Build cumulative pressure integral for non-linear progress
+                // Higher pressure = faster extraction front advancement
+                let maxP = profileCurvePoints.map(\.pressure).max() ?? 9.0
+                var cumPressure: [Double] = [0]
+                for i in 1..<profileCurvePoints.count {
+                    let dtMs = profileCurvePoints[i].timestamp - profileCurvePoints[i-1].timestamp
+                    let avgP = (profileCurvePoints[i].pressure + profileCurvePoints[i-1].pressure) / 2.0
+                    let weight = max(0.05, avgP / max(1.0, maxP))
+                    cumPressure.append(cumPressure.last! + weight * dtMs)
+                }
+                let totalIntegral = cumPressure.last ?? 1.0
+
+                while isAnimating && animationTimeMs < totalTimeMs {
+                    try? await Task.sleep(nanoseconds: UInt64(dt * 1_000_000_000))
+                    guard isAnimating else { break }
+                    animationTimeMs = min(totalTimeMs, animationTimeMs + dt * timeScale)
+
+                    // Map time to pressure-weighted progress
+                    var idx = 0
+                    for i in 0..<profileCurvePoints.count {
+                        if profileCurvePoints[i].timestamp >= animationTimeMs { break }
+                        idx = i
+                    }
+                    animationProgress = min(1.0, cumPressure[min(idx, cumPressure.count - 1)] / max(1e-6, totalIntegral))
+                }
+            } else {
+                // Manual mode: linear animation matching shot time
+                let duration = min(40.0, max(10.0, result?.effectiveShotTime ?? 25.0))
+                let progressPerFrame = dt / duration
+                while isAnimating && animationProgress < 1.0 {
+                    try? await Task.sleep(nanoseconds: UInt64(dt * 1_000_000_000))
+                    guard isAnimating else { break }
+                    animationProgress = min(1.0, animationProgress + progressPerFrame)
+                    animationTimeMs = animationProgress * duration * 1000
+                }
             }
             isAnimating = false
             animationProgress = 1.0
+            animationTimeMs = 0
         }
     }
 }
@@ -1217,12 +1321,13 @@ struct ParameterInfoSheet: View {
     }
 }
 
-// MARK: - Profile Curve Chart (compact pressure-flow over time)
+// MARK: - Profile Curve Chart (pressure-flow over time with playback cursor)
 
 struct ProfileCurveChart: View {
     let points: [ShotDataPoint]
     let isLive: Bool
     let livePoints: [ShotDataPoint]
+    var cursorTimeMs: Double? = nil
 
     var maxTime: Double {
         max(points.last?.timestamp ?? 30000, 10000)
@@ -1231,7 +1336,6 @@ struct ProfileCurveChart: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Background
                 Color(red: 0.06, green: 0.06, blue: 0.09)
 
                 // Grid
@@ -1277,7 +1381,7 @@ struct ProfileCurveChart: View {
                     .stroke(Color.cyan.opacity(0.6), lineWidth: 1.5)
                 }
 
-                // Live overlay (thicker, brighter)
+                // Live overlay
                 if isLive && !livePoints.isEmpty {
                     Path { path in
                         for (i, p) in livePoints.enumerated() {
@@ -1298,6 +1402,21 @@ struct ProfileCurveChart: View {
                         }
                     }
                     .stroke(Color.cyan, lineWidth: 2.5)
+                }
+
+                // Playback cursor
+                if let cursor = cursorTimeMs {
+                    let x = (cursor / maxTime) * geo.size.width
+                    Path { path in
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                    }
+                    .stroke(Color.orange, lineWidth: 1.5)
+
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                        .position(x: x, y: 4)
                 }
 
                 // Axis labels

@@ -469,11 +469,15 @@ struct PuckCFDSolver {
         }
 
         // MARK: Compute residence time (contact time at each cell)
-        // Residence time ≈ dz / |vz| — how long water stays in each layer
+        // Residence time = dz / v_interstitial = dz / (v_Darcy / porosity)
+        // The interstitial (pore) velocity is the actual fluid velocity
+        // through the tortuous pore channels, not the superficial Darcy velocity.
+        let porosity = params.porosity
         for z in 0..<nz {
             for r in 0..<nr {
-                let vz = abs(grid[z][r].velocityZ)
-                grid[z][r].residenceTime = vz > 1e-10 ? dz / vz : 100.0
+                let vDarcy = abs(grid[z][r].velocityZ)
+                let vInterstitial = vDarcy / max(0.1, porosity)
+                grid[z][r].residenceTime = vInterstitial > 1e-10 ? dz / vInterstitial : 100.0
             }
         }
 
