@@ -356,16 +356,6 @@ enum PuckSceneBuilder {
                       xC: xC, zC: zC, cutX: cutX, cutZ: cutZ, tSeg: min(thetaSeg, 120),
                       color: (r: 0.72, g: 0.72, b: 0.75))
 
-        // Decorations (skip during animation for performance)
-        if (cutX < 0.99 || cutZ < 0.99) && !isAnim {
-            addGrindParticles(to: root, nz: nz, nr: nr, pH: pH, rAt: rAt,
-                              grind: grindSizeMicrons, tamp: tampPressureKg,
-                              field: field, mode: mode,
-                              xC: xC, zC: zC, cutX: cutX, cutZ: cutZ)
-            addFlowStreamlines(to: root, result: result, pH: pH, rAt: rAt,
-                               xC: xC, zC: zC, cutX: cutX, cutZ: cutZ)
-        }
-
         addLabel(to: root, text: "Water In  \u{2193}",
                  position: SCNVector3(0, pH / 2 + shellExtra + 0.1, 0.3))
         addLabel(to: root, text: "\u{2191}  Basket Exit",
@@ -661,116 +651,6 @@ enum PuckSceneBuilder {
         torus.materials = [m]
         let n = SCNNode(geometry: torus); n.position = SCNVector3(0, y, 0)
         parent.addChildNode(n)
-    }
-
-    // MARK: - Grind Particles (responsive to grind size and tamp)
-
-    private static func addGrindParticles(
-        to parent: SCNNode, nz: Int, nr: Int,
-        pH: Float, rAt: (Int) -> Float,
-        grind: Double, tamp: Double,
-        field: [[Double]], mode: PuckVizMode,
-        xC: Float, zC: Float, cutX: Double, cutZ: Double
-    ) {
-        // Particle radius scales with grind size
-        let pr = CGFloat(max(0.004, grind / 400.0 * 0.009))
-        let sphere = SCNSphere(radius: pr)
-        // Coarser grind = rougher, more angular particles
-        sphere.segmentCount = grind < 350 ? 10 : (grind < 500 ? 8 : 6)
-
-        let dzP = pH / Float(nz)
-        // Tamp affects particle density: heavier tamp = more packed = more particles
-        let tampDensity = 0.7 + (tamp / 30.0) * 0.6 // 0.7-1.3x
-        let baseSpacingZ = max(1, Int(Double(nz) / (14.0 * tampDensity)))
-        let baseSpacingR = max(1, Int(Double(nr) / (10.0 * tampDensity)))
-        let sZ = baseSpacingZ, sR = baseSpacingR
-        srand48(123)
-
-        // Particle roughness scales with grind size
-        let particleRoughness = CGFloat(0.80 + min(0.15, grind / 800.0 * 0.15))
-
-        for face in 0..<2 {
-            let isX = face == 0
-            guard (isX ? cutX : cutZ) < 0.99 else { continue }
-            let clip = isX ? xC : zC
-            let oc = isX ? zC : xC, ocut = isX ? cutZ : cutX
-
-            for z in stride(from: sZ / 2, to: nz, by: sZ) {
-                let rM = rAt(z)
-                for r in stride(from: sR / 2, to: nr, by: sR) {
-                    let rP = (Float(r) + Float(drand48()) * 0.5) / Float(nr) * rM
-                    let dist = sqrt(clip * clip + rP * rP)
-                    guard dist <= rM, rP <= oc || ocut >= 0.99 else { continue }
-                    let col = colorSIMD(field[z][r], mode: mode)
-                    let yP = pH / 2 - (Float(z) + Float(drand48()) * 0.5) * dzP
-                    let j = Float(drand48() - 0.5) * 0.008
-                    let m = SCNMaterial()
-                    m.diffuse.contents = pColor(CGFloat(col.x)*0.7, CGFloat(col.y)*0.7, CGFloat(col.z)*0.7)
-                    m.lightingModel = .physicallyBased
-                    m.roughness.contents = particleRoughness
-                    sphere.materials = [m]
-                    let n = SCNNode(geometry: sphere.copy() as? SCNGeometry ?? sphere)
-                    n.position = isX ? SCNVector3(clip+j, yP, rP) : SCNVector3(rP, yP, clip+j)
-                    // Slight random scale variation (grind distribution)
-                    let scaleVar = Float(0.7 + drand48() * 0.6) // 0.7-1.3x
-                    n.scale = SCNVector3(scaleVar, scaleVar, scaleVar)
-                    parent.addChildNode(n)
-                }
-            }
-        }
-    }
-
-    // MARK: - Flow Streamlines
-
-    private static func addFlowStreamlines(
-        to parent: SCNNode, result: PuckSimulationResult,
-        pH: Float, rAt: (Int) -> Float,
-        xC: Float, zC: Float, cutX: Double, cutZ: Double
-    ) {
-        let nz = result.gridRows, nr = result.gridCols
-        let dzF = pH / Float(nz)
-        let vF = result.velocityField
-        let pMax = result.grid.flatMap { $0 }.map { $0.flowMagnitude }.max() ?? 1e-10
-        let maxL = dzF * 2.5
-        let sZ = max(1, nz / 12), sR = max(1, nr / 8)
-
-        for face in 0..<2 {
-            let isX = face == 0
-            guard (isX ? cutX : cutZ) < 0.99 else { continue }
-            let clip = isX ? xC : zC
-            let oc = isX ? zC : xC, ocut = isX ? cutZ : cutX
-
-            for z in stride(from: sZ / 2, to: nz, by: sZ) {
-                let rM = rAt(z)
-                for r in stride(from: sR / 2, to: nr, by: sR) {
-                    let nv = Float(vF[z][r]); guard nv > 0.05 else { continue }
-                    let rP = (Float(r) + 0.5) / Float(nr) * rM
-                    let dist = sqrt(clip * clip + rP * rP)
-                    guard dist <= rM, rP <= oc || ocut >= 0.99 else { continue }
-                    let cell = result.grid[z][r]
-                    let yP = pH / 2 - (Float(z) + 0.5) * dzF
-                    let aL = max(0.005, nv * maxL)
-                    let vr = Float(cell.velocityR / pMax)
-                    let vz = Float(-cell.velocityZ / pMax)
-                    guard sqrt(vr*vr + vz*vz) > 1e-6 else { continue }
-                    let ang = atan2(vz, vr)
-                    let cyl = SCNCylinder(radius: 0.0015, height: CGFloat(aL))
-                    let m = SCNMaterial()
-                    m.diffuse.contents = pColor(1, 1, 1)
-                    m.transparency = CGFloat(0.25 + nv * 0.5)
-                    m.lightingModel = .constant; cyl.materials = [m]
-                    let nd = SCNNode(geometry: cyl)
-                    if isX {
-                        nd.position = SCNVector3(clip, yP + sin(ang)*aL*0.5, rP + cos(ang)*aL*0.5)
-                        nd.eulerAngles.x = ang - .pi/2
-                    } else {
-                        nd.position = SCNVector3(rP + cos(ang)*aL*0.5, yP + sin(ang)*aL*0.5, clip)
-                        nd.eulerAngles.z = ang - .pi/2
-                    }
-                    parent.addChildNode(nd)
-                }
-            }
-        }
     }
 
     // MARK: - Lighting
