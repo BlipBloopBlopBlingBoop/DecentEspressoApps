@@ -113,14 +113,17 @@ struct PuckSimulationView: View {
                 isAnimating = false
                 animationProgress = 1.0
                 animationTimeMs = 0
-                // Debounced auto-run: increment serial, wait, check if still current
+                // Start simulation immediately in background (no debounce)
                 simulationSerial += 1
                 let serial = simulationSerial
+                let p = params
                 Task {
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
+                    let res = await Task.detached { PuckCFDSolver.simulate(params: p) }.value
                     guard serial == simulationSerial else { return }
-                    await runSimulation()
+                    withAnimation(.easeInOut(duration: 0.3)) { result = res }
+                    isComputing = false
                 }
+                isComputing = true
             }
             .onChangeCompat(of: machineStore.machineState.pressure) {
                 guard isLiveMode else { return }
@@ -1028,7 +1031,7 @@ struct PuckSimulationView: View {
         animationTimeMs = 0
         isAnimating = true
         Task { @MainActor in
-            let fps: Double = 15
+            let fps: Double = 30
             let dt = 1.0 / fps
 
             if useProfileMode && !profileCurvePoints.isEmpty {

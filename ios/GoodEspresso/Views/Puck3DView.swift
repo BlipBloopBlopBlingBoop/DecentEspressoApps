@@ -247,14 +247,28 @@ enum PuckSceneBuilder {
             for t in 0..<thetaSeg {
                 let t0 = Float(t) * dT, t1 = t0 + dT
                 let mid = (t0 + t1) / 2
-                guard rT * cos(mid) <= xC || cutX >= 0.99 else { continue }
-                guard rT * sin(mid) <= zC || cutZ >= 0.99 else { continue }
+
+                // Clamp vertex positions at cut planes for clean edges
+                func clamp(_ r: Float, _ theta: Float) -> (Float, Float) {
+                    var x = r * cos(theta), z = r * sin(theta)
+                    if cutX < 0.99 { x = min(x, xC) }
+                    if cutZ < 0.99 { z = min(z, zC) }
+                    return (x, z)
+                }
+                // Skip segments entirely beyond the negative side
+                let x0 = rT * cos(t0), x1 = rT * cos(t1)
+                let z0 = rT * sin(t0), z1 = rT * sin(t1)
+                if cutX < 0.99 && max(x0, x1) > xC && min(x0, x1) > xC { continue }
+                if cutZ < 0.99 && max(z0, z1) > zC && min(z0, z1) > zC { continue }
+
+                let (ax0, az0) = clamp(rT, t0); let (ax1, az1) = clamp(rT, t1)
+                let (bx0, bz0) = clamp(rB, t0); let (bx1, bz1) = clamp(rB, t1)
 
                 addQI(
-                    SCNVector3(rT*cos(t0), yT, rT*sin(t0)),
-                    SCNVector3(rT*cos(t1), yT, rT*sin(t1)),
-                    SCNVector3(rB*cos(t1), yB, rB*sin(t1)),
-                    SCNVector3(rB*cos(t0), yB, rB*sin(t0)),
+                    SCNVector3(ax0, yT, az0),
+                    SCNVector3(ax1, yT, az1),
+                    SCNVector3(bx1, yB, bz1),
+                    SCNVector3(bx0, yB, bz0),
                     n: SCNVector3(cos(mid), 0, sin(mid)),
                     c0: cT, c1: cT, c2: cB, c3: cB
                 )
@@ -274,14 +288,21 @@ enum PuckSceneBuilder {
             let y = pH / 2
             for t in 0..<thetaSeg {
                 let t0 = Float(t) * dT, t1 = t0 + dT
-                let mid = (t0 + t1) / 2
                 let rm = (ri + ro) / 2
-                guard rm * cos(mid) <= xC || cutX >= 0.99 else { continue }
-                guard rm * sin(mid) <= zC || cutZ >= 0.99 else { continue }
-                addQI(SCNVector3(ri*cos(t0), y, ri*sin(t0)),
-                      SCNVector3(ro*cos(t0), y, ro*sin(t0)),
-                      SCNVector3(ro*cos(t1), y, ro*sin(t1)),
-                      SCNVector3(ri*cos(t1), y, ri*sin(t1)),
+                // Skip segments fully beyond cut
+                if cutX < 0.99 && rm * cos(t0) > xC && rm * cos(t1) > xC { continue }
+                if cutZ < 0.99 && rm * sin(t0) > zC && rm * sin(t1) > zC { continue }
+                // Clamp at cut planes
+                func cl(_ r: Float, _ th: Float) -> (Float, Float) {
+                    var x = r * cos(th), z = r * sin(th)
+                    if cutX < 0.99 { x = min(x, xC) }
+                    if cutZ < 0.99 { z = min(z, zC) }
+                    return (x, z)
+                }
+                let (ix0, iz0) = cl(ri, t0); let (ox0, oz0) = cl(ro, t0)
+                let (ox1, oz1) = cl(ro, t1); let (ix1, iz1) = cl(ri, t1)
+                addQI(SCNVector3(ix0, y, iz0), SCNVector3(ox0, y, oz0),
+                      SCNVector3(ox1, y, oz1), SCNVector3(ix1, y, iz1),
                       n: SCNVector3(0, 1, 0),
                       c0: cI, c1: cO, c2: cO, c3: cI)
             }
@@ -300,14 +321,19 @@ enum PuckSceneBuilder {
             let y = -pH / 2
             for t in 0..<thetaSeg {
                 let t0 = Float(t) * dT, t1 = t0 + dT
-                let mid = (t0 + t1) / 2
                 let rm = (ri + ro) / 2
-                guard rm * cos(mid) <= xC || cutX >= 0.99 else { continue }
-                guard rm * sin(mid) <= zC || cutZ >= 0.99 else { continue }
-                addQI(SCNVector3(ri*cos(t1), y, ri*sin(t1)),
-                      SCNVector3(ro*cos(t1), y, ro*sin(t1)),
-                      SCNVector3(ro*cos(t0), y, ro*sin(t0)),
-                      SCNVector3(ri*cos(t0), y, ri*sin(t0)),
+                if cutX < 0.99 && rm * cos(t0) > xC && rm * cos(t1) > xC { continue }
+                if cutZ < 0.99 && rm * sin(t0) > zC && rm * sin(t1) > zC { continue }
+                func cl(_ r: Float, _ th: Float) -> (Float, Float) {
+                    var x = r * cos(th), z = r * sin(th)
+                    if cutX < 0.99 { x = min(x, xC) }
+                    if cutZ < 0.99 { z = min(z, zC) }
+                    return (x, z)
+                }
+                let (ix1, iz1) = cl(ri, t1); let (ox1, oz1) = cl(ro, t1)
+                let (ox0, oz0) = cl(ro, t0); let (ix0, iz0) = cl(ri, t0)
+                addQI(SCNVector3(ix1, y, iz1), SCNVector3(ox1, y, oz1),
+                      SCNVector3(ox0, y, oz0), SCNVector3(ix0, y, iz0),
                       n: SCNVector3(0, -1, 0),
                       c0: cI, c1: cO, c2: cO, c3: cI)
             }
@@ -412,7 +438,6 @@ enum PuckSceneBuilder {
 
         // Sub-cell z interpolation for smoother gradients
         let zSubSteps = max(1, 2)  // 2 subdivisions per grid cell
-        let subDz = dz / Float(zSubSteps)
 
         for z in 0..<nz {
             for zSub in 0..<zSubSteps {
@@ -497,25 +522,35 @@ enum PuckSceneBuilder {
         let rShell = topR + 0.002
         let rOut = rShell + wall
 
+        // Clamp shell vertices at cut planes for clean edges
+        let xCut = xC + wall, zCut = zC + wall
+        func clampShell(_ r: Float, _ theta: Float) -> (Float, Float) {
+            var x = r * cos(theta), z = r * sin(theta)
+            if cutX < 0.99 { x = min(x, xCut) }
+            if cutZ < 0.99 { z = min(z, zCut) }
+            return (x, z)
+        }
+
         // Headspace wall (from shellTop down to puckTop)
         for z in 0..<nzW {
             let yT = shellTop - Float(z) * dzW
             let yB = yT - dzW
             for t in 0..<tSeg {
                 let t0 = Float(t) * dT, t1 = t0 + dT, mid = (t0 + t1) / 2
-                guard rOut * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
-                guard rOut * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
-                // Outer face
-                addSQ(SCNVector3(rOut*cos(t0), yT, rOut*sin(t0)),
-                      SCNVector3(rOut*cos(t1), yT, rOut*sin(t1)),
-                      SCNVector3(rOut*cos(t1), yB, rOut*sin(t1)),
-                      SCNVector3(rOut*cos(t0), yB, rOut*sin(t0)),
+                // Skip fully beyond cut
+                let oX0 = rOut * cos(t0), oX1 = rOut * cos(t1)
+                let oZ0 = rOut * sin(t0), oZ1 = rOut * sin(t1)
+                if cutX < 0.99 && min(oX0, oX1) > xCut { continue }
+                if cutZ < 0.99 && min(oZ0, oZ1) > zCut { continue }
+                // Outer face (clamped)
+                let (ox0, oz0) = clampShell(rOut, t0); let (ox1, oz1) = clampShell(rOut, t1)
+                addSQ(SCNVector3(ox0, yT, oz0), SCNVector3(ox1, yT, oz1),
+                      SCNVector3(ox1, yB, oz1), SCNVector3(ox0, yB, oz0),
                       n: SCNVector3(cos(mid), 0, sin(mid)))
-                // Inner face
-                addSQ(SCNVector3(rShell*cos(t1), yT, rShell*sin(t1)),
-                      SCNVector3(rShell*cos(t0), yT, rShell*sin(t0)),
-                      SCNVector3(rShell*cos(t0), yB, rShell*sin(t0)),
-                      SCNVector3(rShell*cos(t1), yB, rShell*sin(t1)),
+                // Inner face (clamped)
+                let (ix0, iz0) = clampShell(rShell, t0); let (ix1, iz1) = clampShell(rShell, t1)
+                addSQ(SCNVector3(ix1, yT, iz1), SCNVector3(ix0, yT, iz0),
+                      SCNVector3(ix0, yB, iz0), SCNVector3(ix1, yB, iz1),
                       n: SCNVector3(-cos(mid), 0, -sin(mid)))
             }
         }
@@ -525,12 +560,14 @@ enum PuckSceneBuilder {
         // Top annulus
         for t in 0..<tSeg {
             let t0 = Float(t) * dT, t1 = t0 + dT, mid = (t0 + t1) / 2
-            guard rOut * cos(mid) <= xC + wall || cutX >= 0.99 else { continue }
-            guard rOut * sin(mid) <= zC + wall || cutZ >= 0.99 else { continue }
-            addSQ(SCNVector3(rShell*cos(t0), shellTop, rShell*sin(t0)),
-                  SCNVector3(rOut*cos(t0), shellTop, rOut*sin(t0)),
-                  SCNVector3(rOut*cos(t1), shellTop, rOut*sin(t1)),
-                  SCNVector3(rShell*cos(t1), shellTop, rShell*sin(t1)),
+            let oX0 = rOut * cos(t0), oX1 = rOut * cos(t1)
+            let oZ0 = rOut * sin(t0), oZ1 = rOut * sin(t1)
+            if cutX < 0.99 && min(oX0, oX1) > xCut { continue }
+            if cutZ < 0.99 && min(oZ0, oZ1) > zCut { continue }
+            let (sx0, sz0) = clampShell(rShell, t0); let (sx1, sz1) = clampShell(rShell, t1)
+            let (rx0, rz0) = clampShell(rOut, t0); let (rx1, rz1) = clampShell(rOut, t1)
+            addSQ(SCNVector3(sx0, shellTop, sz0), SCNVector3(rx0, shellTop, rz0),
+                  SCNVector3(rx1, shellTop, rz1), SCNVector3(sx1, shellTop, sz1),
                   n: SCNVector3(0, 1, 0))
         }
 
