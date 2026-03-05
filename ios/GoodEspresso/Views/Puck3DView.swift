@@ -61,6 +61,8 @@ struct PuckSceneRepresentable: UIViewRepresentable {
         v.autoenablesDefaultLighting = false
         v.backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
         v.antialiasingMode = .multisampling4X
+        v.isJitteringEnabled = true
+        v.preferredFramesPerSecond = 60
         let scene = PuckSceneBuilder.makeSceneShell()
         scene.rootNode.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
@@ -98,6 +100,8 @@ struct PuckSceneRepresentable: NSViewRepresentable {
         v.autoenablesDefaultLighting = false
         v.layer?.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1).cgColor
         v.antialiasingMode = .multisampling4X
+        v.isJitteringEnabled = true
+        v.preferredFramesPerSecond = 60
         let scene = PuckSceneBuilder.makeSceneShell()
         scene.rootNode.addChildNode(PuckSceneBuilder.buildContentNode(
             result: result, mode: mode, basketSpec: basketSpec,
@@ -139,6 +143,17 @@ enum PuckSceneBuilder {
         cam.camera?.fieldOfView = 34
         cam.camera?.zNear = 0.01
         cam.camera?.zFar = 50
+        // HDR rendering with bloom and ambient occlusion
+        cam.camera?.wantsHDR = true
+        cam.camera?.bloomIntensity = 0.3
+        cam.camera?.bloomThreshold = 0.8
+        cam.camera?.bloomBlurRadius = 6.0
+        cam.camera?.screenSpaceAmbientOcclusionIntensity = 0.4
+        cam.camera?.screenSpaceAmbientOcclusionRadius = 3.0
+        cam.camera?.screenSpaceAmbientOcclusionBias = 0.03
+        cam.camera?.screenSpaceAmbientOcclusionDepthThreshold = 0.1
+        cam.camera?.screenSpaceAmbientOcclusionNormalThreshold = 0.3
+        cam.camera?.motionBlurIntensity = 0.0
         cam.position = SCNVector3(1.4, 1.1, 1.8)
         cam.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(cam)
@@ -658,22 +673,35 @@ enum PuckSceneBuilder {
     private static func addLighting(to root: SCNNode) {
         func light(_ type: SCNLight.LightType, _ intensity: CGFloat,
                     _ r: CGFloat, _ g: CGFloat, _ b: CGFloat,
-                    pos: SCNVector3, shadow: Bool = false) {
+                    pos: SCNVector3, shadow: Bool = false,
+                    shadowRes: Int = 2048) {
             let n = SCNNode(); n.light = SCNLight()
             n.light?.type = type; n.light?.intensity = intensity
             n.light?.color = pColor(r, g, b)
-            if shadow { n.light?.castsShadow = true; n.light?.shadowRadius = 4 }
+            if shadow {
+                n.light?.castsShadow = true
+                n.light?.shadowRadius = 5
+                n.light?.shadowMapSize = CGSize(width: shadowRes, height: shadowRes)
+                n.light?.shadowSampleCount = 8
+                n.light?.shadowBias = 1.0
+            }
             n.position = pos; n.look(at: SCNVector3(0, 0, 0))
             root.addChildNode(n)
         }
+        // Soft ambient fill
         let a = SCNNode(); a.light = SCNLight()
-        a.light?.type = .ambient; a.light?.intensity = 400
-        a.light?.color = pColor(0.80, 0.78, 0.75)
+        a.light?.type = .ambient; a.light?.intensity = 350
+        a.light?.color = pColor(0.75, 0.73, 0.70)
         root.addChildNode(a)
 
-        light(.directional, 1000, 1.0, 0.97, 0.92, pos: SCNVector3(2, 3, 2))
-        light(.directional, 350, 0.6, 0.7, 1.0, pos: SCNVector3(-2, 0.5, 1))
-        light(.directional, 250, 0.5, 0.6, 1.0, pos: SCNVector3(0, -2, -1))
+        // Key light: warm directional with shadow
+        light(.directional, 1100, 1.0, 0.96, 0.90, pos: SCNVector3(2, 3, 2), shadow: true)
+        // Fill light: cool blue
+        light(.directional, 400, 0.55, 0.65, 1.0, pos: SCNVector3(-2, 0.5, 1))
+        // Rim light: subtle backlight for edge definition
+        light(.directional, 300, 0.7, 0.8, 1.0, pos: SCNVector3(0, -2, -1.5))
+        // Top spot for cutaway face illumination
+        light(.directional, 200, 0.9, 0.85, 0.75, pos: SCNVector3(0.5, 3, 0))
     }
 
     // MARK: - Labels
