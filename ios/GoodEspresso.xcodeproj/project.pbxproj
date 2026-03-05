@@ -32,6 +32,8 @@
 		1A0000043 /* PuckModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000042; };
 		1A0000045 /* PuckSimulationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000044; };
 		1A0000047 /* Puck3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000046; };
+		1A0000049 /* PuckMetalSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000048; };
+		1A000004B /* PuckSolver.metal in Sources */ = {isa = PBXBuildFile; fileRef = 1A000004A; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,6 +65,8 @@
 		1A0000042 /* PuckModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckModel.swift; sourceTree = "<group>"; };
 		1A0000044 /* PuckSimulationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckSimulationView.swift; sourceTree = "<group>"; };
 		1A0000046 /* Puck3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Puck3DView.swift; sourceTree = "<group>"; };
+		1A0000048 /* PuckMetalSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckMetalSolver.swift; sourceTree = "<group>"; };
+		1A000004A /* PuckSolver.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = PuckSolver.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +96,7 @@
 				1A0000027 /* Models */,
 				1A0000028 /* Views */,
 				1A0000029 /* Services */,
+				1A000004C /* Shaders */,
 				1A000002A /* Data */,
 				1A0000006 /* Assets.xcassets */,
 				1A0000022 /* Info.plist */,
@@ -115,6 +120,7 @@
 				1A0000008 /* Models.swift */,
 				1A0000020 /* MachineStore.swift */,
 				1A0000042 /* PuckModel.swift */,
+				1A0000048 /* PuckMetalSolver.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -156,6 +162,14 @@
 				1A000000C /* ProfilesData.swift */,
 			);
 			path = Data;
+			sourceTree = "<group>";
+		};
+		1A000004C /* Shaders */ = {
+			isa = PBXGroup;
+			children = (
+				1A000004A /* PuckSolver.metal */,
+			);
+			path = Shaders;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -251,6 +265,8 @@
 				1A0000043 /* PuckModel.swift in Sources */,
 				1A0000045 /* PuckSimulationView.swift in Sources */,
 				1A0000047 /* Puck3DView.swift in Sources */,
+				1A0000049 /* PuckMetalSolver.swift in Sources */,
+				1A000004B /* PuckSolver.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
