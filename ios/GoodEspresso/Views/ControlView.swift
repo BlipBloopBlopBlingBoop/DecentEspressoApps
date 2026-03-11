@@ -33,9 +33,6 @@ struct ControlView: View {
 
                         // Temperature Gauge
                         TemperatureGaugeSection()
-
-                        // Machine Settings
-                        MachineSettingsSection()
                     }
                 }
                 .padding()
@@ -223,40 +220,6 @@ struct MainControlButtons: View {
                             } else {
                                 try await bluetoothService.startSteam()
                             }
-                        } catch {
-                            print("Error: \(error)")
-                        }
-                    }
-                }
-
-                SecondaryControlButton(
-                    title: "Flush",
-                    icon: "drop.fill",
-                    color: .cyan,
-                    isActive: machineStore.machineState.state == .flush
-                ) {
-                    Task {
-                        do {
-                            if machineStore.machineState.state == .flush {
-                                try await bluetoothService.stop()
-                            } else {
-                                try await bluetoothService.startFlush()
-                            }
-                        } catch {
-                            print("Error: \(error)")
-                        }
-                    }
-                }
-
-                SecondaryControlButton(
-                    title: "Water",
-                    icon: "mug.fill",
-                    color: .blue,
-                    isActive: false
-                ) {
-                    Task {
-                        do {
-                            try await bluetoothService.startHotWater()
                         } catch {
                             print("Error: \(error)")
                         }
@@ -465,6 +428,7 @@ struct TemperatureItem: View {
 struct ExtractionChartSection: View {
     @EnvironmentObject var machineStore: MachineStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showingFullScreen = false
 
     var dataPoints: [ShotDataPoint] {
         if let activeShot = machineStore.activeShot, !activeShot.dataPoints.isEmpty {
@@ -479,6 +443,10 @@ struct ExtractionChartSection: View {
         machineStore.machineState.state == .brewing || machineStore.isRecording
     }
 
+    var chartTitle: String {
+        isLive ? "Live Extraction" : "Last Shot"
+    }
+
     private var chartHeight: CGFloat {
         horizontalSizeClass == .compact ? 220 : 400
     }
@@ -486,7 +454,7 @@ struct ExtractionChartSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(isLive ? "Live Extraction" : "Last Shot")
+                Text(chartTitle)
                     .font(.headline)
 
                 Spacer()
@@ -503,6 +471,16 @@ struct ExtractionChartSection: View {
                     Circle()
                         .fill(.red)
                         .frame(width: 8, height: 8)
+                }
+
+                if !dataPoints.isEmpty {
+                    Button {
+                        showingFullScreen = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -525,90 +503,8 @@ struct ExtractionChartSection: View {
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-// MARK: - Machine Settings Section
-struct MachineSettingsSection: View {
-    @EnvironmentObject var machineStore: MachineStore
-    @State private var targetTemp: Double = 93
-    @State private var steamTemp: Double = 140
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
-                .font(.headline)
-
-            // Target Temperature
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Target Temperature")
-                        .font(.subheadline)
-                    Spacer()
-                    Text(String(format: "%.0f\u{00B0}C", targetTemp))
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.orange)
-                }
-
-                Slider(value: $targetTemp, in: 80...100, step: 1)
-                    .tint(.orange)
-            }
-
-            Divider()
-
-            // Steam Temperature
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Steam Temperature")
-                        .font(.subheadline)
-                    Spacer()
-                    Text(String(format: "%.0f\u{00B0}C", steamTemp))
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.red)
-                }
-
-                Slider(value: $steamTemp, in: 120...165, step: 5)
-                    .tint(.red)
-            }
-
-            Divider()
-
-            // Info Row
-            HStack {
-                InfoItem(label: "Water Level", value: "OK", icon: "drop.fill", color: .blue)
-                Spacer()
-                InfoItem(label: "Machine", value: machineStore.deviceName ?? "DE1", icon: "cpu", color: .gray)
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemGroupedBg)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .onAppear {
-            targetTemp = machineStore.machineState.temperature.target
-        }
-    }
-}
-
-struct InfoItem: View {
-    let label: String
-    let value: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.caption)
-                    .fontWeight(.medium)
-            }
+        .fullScreenCover(isPresented: $showingFullScreen) {
+            FullScreenChartView(dataPoints: dataPoints, isLive: isLive, title: chartTitle)
         }
     }
 }

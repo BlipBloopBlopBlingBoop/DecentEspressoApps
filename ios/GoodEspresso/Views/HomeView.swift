@@ -301,46 +301,11 @@ struct QuickControlsCard: View {
                         }
                     }
                 }
-
-                ControlButton(
-                    title: "Flush",
-                    icon: "drop.fill",
-                    color: .cyan,
-                    isActive: machineStore.machineState.state == .flush
-                ) {
-                    Task {
-                        do {
-                            if machineStore.machineState.state == .flush {
-                                try await bluetoothService.stop()
-                            } else {
-                                try await bluetoothService.startFlush()
-                            }
-                        } catch {
-                            print("Error: \(error)")
-                        }
-                    }
-                }
-
-                ControlButton(
-                    title: "Hot Water",
-                    icon: "mug.fill",
-                    color: .blue,
-                    isActive: false
-                ) {
-                    Task {
-                        do {
-                            try await bluetoothService.startHotWater()
-                        } catch {
-                            print("Error: \(error)")
-                        }
-                    }
-                }
             }
 
             // Stop button
             if machineStore.machineState.state == .brewing ||
-               machineStore.machineState.state == .steam ||
-               machineStore.machineState.state == .flush {
+               machineStore.machineState.state == .steam {
                 Button {
                     Task {
                         try? await bluetoothService.stop()
@@ -440,6 +405,7 @@ struct ActiveProfileCard: View {
 struct ShotChartCard: View {
     @EnvironmentObject var machineStore: MachineStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showingFullScreen = false
 
     var isLive: Bool {
         machineStore.machineState.state == .brewing || machineStore.isRecording
@@ -483,6 +449,16 @@ struct ShotChartCard: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+
+                if !dataPoints.isEmpty {
+                    Button {
+                        showingFullScreen = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             if !dataPoints.isEmpty {
@@ -506,6 +482,37 @@ struct ShotChartCard: View {
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .fullScreenCover(isPresented: $showingFullScreen) {
+            FullScreenChartView(dataPoints: dataPoints, isLive: isLive, title: chartTitle)
+        }
+    }
+}
+
+// MARK: - Full Screen Chart View
+struct FullScreenChartView: View {
+    let dataPoints: [ShotDataPoint]
+    let isLive: Bool
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geometry in
+                ShotChartView(dataPoints: dataPoints, isLive: isLive)
+                    .padding()
+            }
+            .background(Color.systemGroupedBg)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailingCompat) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
