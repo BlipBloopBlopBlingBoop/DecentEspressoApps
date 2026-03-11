@@ -253,97 +253,99 @@ struct StatusItem: View {
 struct QuickControlsCard: View {
     @EnvironmentObject var machineStore: MachineStore
     @EnvironmentObject var bluetoothService: BluetoothService
-    @State private var isLoading = false
+    @State private var targetTemp: Double = 93
+    @State private var steamTemp: Double = 160
+    @State private var tempInitialized = false
+
+    var isSleeping: Bool {
+        machineStore.machineState.state == .sleep
+    }
 
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Text("Quick Controls")
+                Text("Machine Controls")
                     .font(.headline)
                 Spacer()
             }
 
-            HStack(spacing: 12) {
-                ControlButton(
-                    title: "Espresso",
-                    icon: "cup.and.saucer.fill",
-                    color: .orange,
-                    isActive: machineStore.machineState.state == .brewing
-                ) {
-                    Task {
-                        do {
-                            if machineStore.machineState.state == .brewing {
-                                try await bluetoothService.stop()
-                            } else {
-                                try await bluetoothService.startEspresso()
-                            }
-                        } catch {
-                            print("Error: \(error)")
+            // Standby / Wake button
+            Button {
+                Task {
+                    do {
+                        if isSleeping {
+                            try await bluetoothService.wakeUp()
+                        } else {
+                            try await bluetoothService.goToSleep()
                         }
+                    } catch {
+                        print("Error: \(error)")
                     }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: isSleeping ? "sun.max.fill" : "moon.fill")
+                        .font(.title3)
+                    Text(isSleeping ? "Wake" : "Standby")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(isSleeping ? .orange : .purple)
+
+            // Target Temperature
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Brew Temperature")
+                        .font(.subheadline)
+                    Spacer()
+                    Text(machineStore.formatTemperature(targetTemp))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
                 }
 
-                ControlButton(
-                    title: "Steam",
-                    icon: "cloud.fill",
-                    color: .red,
-                    isActive: machineStore.machineState.state == .steam
-                ) {
-                    Task {
-                        do {
-                            if machineStore.machineState.state == .steam {
-                                try await bluetoothService.stop()
-                            } else {
-                                try await bluetoothService.startSteam()
-                            }
-                        } catch {
-                            print("Error: \(error)")
+                Slider(value: $targetTemp, in: 80...100, step: 0.5)
+                    .tint(.orange)
+                    .onChangeCompat(of: targetTemp) { newTemp in
+                        Task {
+                            try? await bluetoothService.setTargetGroupTemperature(newTemp)
                         }
                     }
-                }
             }
 
-            // Stop button
-            if machineStore.machineState.state == .brewing ||
-               machineStore.machineState.state == .steam {
-                Button {
-                    Task {
-                        try? await bluetoothService.stop()
-                    }
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
+            // Steam Temperature
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Steam Temperature")
+                        .font(.subheadline)
+                    Spacer()
+                    Text(machineStore.formatTemperature(steamTemp))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.red)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+
+                Slider(value: $steamTemp, in: 120...165, step: 1)
+                    .tint(.red)
+                    .onChangeCompat(of: steamTemp) { newTemp in
+                        Task {
+                            try? await bluetoothService.setSteamTemperature(newTemp)
+                        }
+                    }
             }
         }
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-struct ControlButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let isActive: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title)
-                Text(title)
-                    .font(.caption)
+        .onAppear {
+            if !tempInitialized {
+                let target = machineStore.machineState.temperature.target
+                if target > 0 { targetTemp = target }
+                tempInitialized = true
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(isActive ? color : Color.tertiarySystemGroupedBg)
-            .foregroundStyle(isActive ? .white : color)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 }

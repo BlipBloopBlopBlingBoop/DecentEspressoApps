@@ -170,21 +170,24 @@ struct LiveReadout: View {
 struct MainControlButtons: View {
     @EnvironmentObject var machineStore: MachineStore
     @EnvironmentObject var bluetoothService: BluetoothService
+    @State private var targetTemp: Double = 93
+    @State private var steamTemp: Double = 160
+    @State private var tempInitialized = false
 
-    var isBrewing: Bool {
-        machineStore.machineState.state == .brewing
+    var isSleeping: Bool {
+        machineStore.machineState.state == .sleep
     }
 
     var body: some View {
         VStack(spacing: 16) {
-            // Main Espresso Button
+            // Standby / Wake Button
             Button {
                 Task {
                     do {
-                        if isBrewing {
-                            try await bluetoothService.stop()
+                        if isSleeping {
+                            try await bluetoothService.wakeUp()
                         } else {
-                            try await bluetoothService.startEspresso()
+                            try await bluetoothService.goToSleep()
                         }
                     } catch {
                         print("Error: \(error)")
@@ -192,10 +195,10 @@ struct MainControlButtons: View {
                 }
             } label: {
                 HStack {
-                    Image(systemName: isBrewing ? "stop.fill" : "play.fill")
+                    Image(systemName: isSleeping ? "sun.max.fill" : "moon.fill")
                         .font(.title2)
 
-                    Text(isBrewing ? "Stop" : "Start Espresso")
+                    Text(isSleeping ? "Wake" : "Standby")
                         .font(.title3)
                         .fontWeight(.semibold)
                 }
@@ -203,57 +206,61 @@ struct MainControlButtons: View {
                 .padding(.vertical, 20)
             }
             .buttonStyle(.borderedProminent)
-            .tint(isBrewing ? .red : .orange)
+            .tint(isSleeping ? .orange : .purple)
 
-            // Secondary Controls
-            HStack(spacing: 12) {
-                SecondaryControlButton(
-                    title: "Steam",
-                    icon: "cloud.fill",
-                    color: .red,
-                    isActive: machineStore.machineState.state == .steam
-                ) {
-                    Task {
-                        do {
-                            if machineStore.machineState.state == .steam {
-                                try await bluetoothService.stop()
-                            } else {
-                                try await bluetoothService.startSteam()
-                            }
-                        } catch {
-                            print("Error: \(error)")
+            // Target Brew Temperature
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Brew Temperature")
+                        .font(.subheadline)
+                    Spacer()
+                    Text(machineStore.formatTemperature(targetTemp))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
+                }
+
+                Slider(value: $targetTemp, in: 80...100, step: 0.5)
+                    .tint(.orange)
+                    .onChangeCompat(of: targetTemp) { newTemp in
+                        Task {
+                            try? await bluetoothService.setTargetGroupTemperature(newTemp)
                         }
                     }
+            }
+
+            Divider()
+
+            // Steam Temperature
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Steam Temperature")
+                        .font(.subheadline)
+                    Spacer()
+                    Text(machineStore.formatTemperature(steamTemp))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.red)
                 }
+
+                Slider(value: $steamTemp, in: 120...165, step: 1)
+                    .tint(.red)
+                    .onChangeCompat(of: steamTemp) { newTemp in
+                        Task {
+                            try? await bluetoothService.setSteamTemperature(newTemp)
+                        }
+                    }
             }
         }
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-struct SecondaryControlButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let isActive: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title2)
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.medium)
+        .onAppear {
+            if !tempInitialized {
+                let target = machineStore.machineState.temperature.target
+                if target > 0 { targetTemp = target }
+                tempInitialized = true
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(isActive ? color : Color.tertiarySystemGroupedBg)
-            .foregroundStyle(isActive ? .white : color)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 }
