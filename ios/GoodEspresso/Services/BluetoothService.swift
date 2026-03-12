@@ -163,8 +163,8 @@ class BluetoothService: NSObject, ObservableObject {
             throw BluetoothError.characteristicNotFound
         }
 
-        let steamTemp = UInt8(min(max(machineStore?.machineState.temperature.steam > 0 ?
-            machineStore!.machineState.temperature.steam : 160, 0), 255))
+        let currentSteam = machineStore?.machineState.temperature.steam ?? 0
+        let steamTemp = UInt8(min(max(currentSteam > 0 ? currentSteam : 160, 0), 255))
 
         var data = Data(count: 9)
         data[0] = 0x00                           // SteamSettings
