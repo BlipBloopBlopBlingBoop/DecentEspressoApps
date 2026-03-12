@@ -152,6 +152,21 @@ class BluetoothService: NSObject, ObservableObject {
         try await sendCommand(.goToSleep)
     }
 
+    /// Start steam mode
+    func startSteam() async throws {
+        try await sendCommand(.steam)
+    }
+
+    /// Start hot water / flush mode
+    func startFlush() async throws {
+        try await sendCommand(.hotWater)
+    }
+
+    /// Start hot water dispense
+    func startHotWater() async throws {
+        try await sendCommand(.hotWater)
+    }
+
     /// Wake machine from sleep to idle
     func wakeUp() async throws {
         try await sendCommand(.idle)
