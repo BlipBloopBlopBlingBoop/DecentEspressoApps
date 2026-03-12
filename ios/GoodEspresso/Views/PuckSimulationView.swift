@@ -61,6 +61,7 @@ struct PuckSimulationView: View {
     @State private var profileCurvePoints: [ShotDataPoint] = []
     @State private var animationTimeMs: Double = 0
     @State private var showingFullScreen = false
+    @State private var showingFullScreenChart = false
     @State private var adaptiveGridRows: Int = 384
     @State private var adaptiveGridCols: Int = 200
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -134,6 +135,26 @@ struct PuckSimulationView: View {
                     cutZ: $cutZ
                 )
                 .frame(minWidth: 600, minHeight: 500)
+            }
+            #endif
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showingFullScreenChart) {
+                FullScreenProfileChartView(
+                    points: profileCurvePoints,
+                    isLive: isLiveMode,
+                    livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : [],
+                    cursorTimeMs: isAnimating ? animationTimeMs : nil
+                )
+            }
+            #else
+            .sheet(isPresented: $showingFullScreenChart) {
+                FullScreenProfileChartView(
+                    points: profileCurvePoints,
+                    isLive: isLiveMode,
+                    livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : [],
+                    cursorTimeMs: isAnimating ? animationTimeMs : nil
+                )
+                .frame(minWidth: 600, minHeight: 400)
             }
             #endif
             .task {
@@ -365,14 +386,29 @@ struct PuckSimulationView: View {
 
                 // Pressure-flow chart from profile with playback cursor
                 if !profileCurvePoints.isEmpty {
-                    ProfileCurveChart(
-                        points: profileCurvePoints,
-                        isLive: isLiveMode,
-                        livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : [],
-                        cursorTimeMs: isAnimating ? animationTimeMs : nil
-                    )
-                    .frame(height: 120)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    ZStack(alignment: .topTrailing) {
+                        ProfileCurveChart(
+                            points: profileCurvePoints,
+                            isLive: isLiveMode,
+                            livePoints: isLiveMode ? (machineStore.activeShot?.dataPoints ?? []) : [],
+                            cursorTimeMs: isAnimating ? animationTimeMs : nil
+                        )
+                        .frame(height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        Button {
+                            showingFullScreenChart = true
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .frame(width: 26, height: 26)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(6)
+                    }
                 }
 
                 // Current step readout during animation
@@ -1634,6 +1670,58 @@ struct FullScreenPuckView: View {
                         endPoint: .bottom
                     )
                 )
+            }
+        }
+    }
+}
+
+// MARK: - Full Screen Profile Chart View
+
+struct FullScreenProfileChartView: View {
+    let points: [ShotDataPoint]
+    let isLive: Bool
+    let livePoints: [ShotDataPoint]
+    var cursorTimeMs: Double? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.04, green: 0.04, blue: 0.07)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("Profile Curve")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+                // Full-size chart
+                ProfileCurveChart(
+                    points: points,
+                    isLive: isLive,
+                    livePoints: livePoints,
+                    cursorTimeMs: cursorTimeMs
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
         }
     }
