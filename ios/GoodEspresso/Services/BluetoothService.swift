@@ -147,19 +147,68 @@ class BluetoothService: NSObject, ObservableObject {
         }
     }
 
-    /// Start steam mode
-    func startSteam() async throws {
-        try await sendCommand(.steam)
+    /// Put machine into sleep/standby mode
+    func goToSleep() async throws {
+        try await sendCommand(.goToSleep)
     }
 
-    /// Start flush/rinse
-    func startFlush() async throws {
-        try await sendCommand(.hotWaterRinse)
+    /// Wake machine from sleep to idle
+    func wakeUp() async throws {
+        try await sendCommand(.idle)
     }
 
-    /// Start hot water dispense
-    func startHotWater() async throws {
-        try await sendCommand(.hotWater)
+    /// Set the target group (brew) temperature via shotSettings characteristic
+    func setTargetGroupTemperature(_ tempCelsius: Double) async throws {
+        guard let characteristic = characteristics[DecentUUIDs.shotSettings] else {
+            throw BluetoothError.characteristicNotFound
+        }
+
+        let steamTemp = UInt8(min(max(machineStore?.machineState.temperature.steam > 0 ?
+            machineStore!.machineState.temperature.steam : 160, 0), 255))
+
+        var data = Data(count: 9)
+        data[0] = 0x00                           // SteamSettings
+        data[1] = steamTemp                       // TargetSteamTemp (preserve current)
+        data[2] = 0x00                           // TargetSteamLength
+        data[3] = 0x00                           // TargetHotWaterTemp
+        data[4] = 0x00                           // TargetHotWaterVol
+        data[5] = 0x00                           // TargetHotWaterLength
+        data[6] = 0x00                           // TargetEspressoVol
+        let rawTemp = UInt16(min(max(tempCelsius * 256.0, 0), 65535))
+        data[7] = UInt8(rawTemp >> 8)            // TargetGroupTemp high byte
+        data[8] = UInt8(rawTemp & 0xFF)          // TargetGroupTemp low byte
+
+        try await writeValue(data, for: characteristic)
+
+        await MainActor.run {
+            machineStore?.machineState.temperature.target = tempCelsius
+        }
+
+        print("[BluetoothService] Set target group temp to \(tempCelsius)°C")
+    }
+
+    /// Set the target steam temperature via shotSettings characteristic
+    func setSteamTemperature(_ tempCelsius: Double) async throws {
+        guard let characteristic = characteristics[DecentUUIDs.shotSettings] else {
+            throw BluetoothError.characteristicNotFound
+        }
+
+        let groupTarget = machineStore?.machineState.temperature.target ?? 93.0
+
+        var data = Data(count: 9)
+        data[0] = 0x00                           // SteamSettings
+        data[1] = UInt8(min(max(tempCelsius, 0), 255))  // TargetSteamTemp
+        data[2] = 0x00                           // TargetSteamLength
+        data[3] = 0x00                           // TargetHotWaterTemp
+        data[4] = 0x00                           // TargetHotWaterVol
+        data[5] = 0x00                           // TargetHotWaterLength
+        data[6] = 0x00                           // TargetEspressoVol
+        let rawTemp = UInt16(min(max(groupTarget * 256.0, 0), 65535))
+        data[7] = UInt8(rawTemp >> 8)            // TargetGroupTemp high byte
+        data[8] = UInt8(rawTemp & 0xFF)          // TargetGroupTemp low byte
+
+        try await writeValue(data, for: characteristic)
+        print("[BluetoothService] Set steam temp to \(tempCelsius)°C")
     }
 
     // MARK: - Profile Upload
