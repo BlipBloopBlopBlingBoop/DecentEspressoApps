@@ -6,6 +6,9 @@
 //  Red-Black SOR for pressure, parallel Darcy velocity computation.
 //  Falls back to CPU solver if Metal is unavailable.
 //
+//  Uses dispatchThreadgroups (not dispatchThreads) for compatibility
+//  with all iOS devices including A10 and earlier.
+//
 
 import Foundation
 import Metal
@@ -75,6 +78,30 @@ final class PuckMetalSolver {
         permPipeline = makePipeline("buildPermField")
     }
 
+    /// Compute a safe threadgroup size for a given pipeline and grid dimensions.
+    /// Respects the pipeline's maxTotalThreadsPerThreadgroup limit.
+    private func safeThreadgroupSize(
+        pipeline: MTLComputePipelineState,
+        gridWidth: Int,
+        gridHeight: Int
+    ) -> MTLSize {
+        let maxThreads = pipeline.maxTotalThreadsPerThreadgroup
+        let threadWidth = pipeline.threadExecutionWidth
+        // Start with threadExecutionWidth for x, then fill y
+        let w = min(threadWidth, gridWidth)
+        let h = min(maxThreads / w, gridHeight)
+        return MTLSize(width: max(1, w), height: max(1, h), depth: 1)
+    }
+
+    /// Compute the number of threadgroups needed to cover the grid.
+    private func threadgroupCount(gridWidth: Int, gridHeight: Int, tgSize: MTLSize) -> MTLSize {
+        MTLSize(
+            width: (gridWidth + tgSize.width - 1) / tgSize.width,
+            height: (gridHeight + tgSize.height - 1) / tgSize.height,
+            depth: 1
+        )
+    }
+
     // MARK: - GPU Pressure Solve
 
     /// Solve the pressure field on GPU using Red-Black SOR.
@@ -128,41 +155,51 @@ final class PuckMetalSolver {
 
         // Grid size for dispatching: nr threads in x, (nz-2) threads in y (interior rows)
         let interiorRows = nz - 2
-        let threadGroupSize = MTLSize(width: min(16, nr), height: min(16, interiorRows), depth: 1)
+        let tgSize = safeThreadgroupSize(pipeline: pipeline, gridWidth: nr, gridHeight: interiorRows)
+        let tgCount = threadgroupCount(gridWidth: nr, gridHeight: interiorRows, tgSize: tgSize)
 
-        guard let cmdBuf = queue.makeCommandBuffer() else { return nil }
+        // Batch iterations into multiple command buffers to avoid GPU timeout.
+        // Each command buffer handles up to 50 iterations (100 encoder passes).
+        let batchSize = 50
+        var remaining = iterations
 
-        for _ in 0..<iterations {
-            // Red phase (color = 0)
-            if let encoder = cmdBuf.makeComputeCommandEncoder() {
-                params.color = 0
-                encoder.setComputePipelineState(pipeline)
-                encoder.setBuffer(pBuffer, offset: 0, index: 0)
-                encoder.setBuffer(kBuffer, offset: 0, index: 1)
-                encoder.setBytes(&params, length: MemoryLayout<MetalSolverParams>.size, index: 2)
-                encoder.dispatchThreads(
-                    MTLSize(width: nr, height: interiorRows, depth: 1),
-                    threadsPerThreadgroup: threadGroupSize
-                )
-                encoder.endEncoding()
+        while remaining > 0 {
+            let batch = min(batchSize, remaining)
+            guard let cmdBuf = queue.makeCommandBuffer() else { return nil }
+
+            for _ in 0..<batch {
+                // Red phase (color = 0)
+                if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                    params.color = 0
+                    encoder.setComputePipelineState(pipeline)
+                    encoder.setBuffer(pBuffer, offset: 0, index: 0)
+                    encoder.setBuffer(kBuffer, offset: 0, index: 1)
+                    encoder.setBytes(&params, length: MemoryLayout<MetalSolverParams>.size, index: 2)
+                    encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
+                    encoder.endEncoding()
+                }
+                // Black phase (color = 1)
+                if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                    params.color = 1
+                    encoder.setComputePipelineState(pipeline)
+                    encoder.setBuffer(pBuffer, offset: 0, index: 0)
+                    encoder.setBuffer(kBuffer, offset: 0, index: 1)
+                    encoder.setBytes(&params, length: MemoryLayout<MetalSolverParams>.size, index: 2)
+                    encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
+                    encoder.endEncoding()
+                }
             }
-            // Black phase (color = 1)
-            if let encoder = cmdBuf.makeComputeCommandEncoder() {
-                params.color = 1
-                encoder.setComputePipelineState(pipeline)
-                encoder.setBuffer(pBuffer, offset: 0, index: 0)
-                encoder.setBuffer(kBuffer, offset: 0, index: 1)
-                encoder.setBytes(&params, length: MemoryLayout<MetalSolverParams>.size, index: 2)
-                encoder.dispatchThreads(
-                    MTLSize(width: nr, height: interiorRows, depth: 1),
-                    threadsPerThreadgroup: threadGroupSize
-                )
-                encoder.endEncoding()
+
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+
+            if cmdBuf.status == .error {
+                // GPU failed — caller will fall back to CPU solver
+                return nil
             }
+
+            remaining -= batch
         }
-
-        cmdBuf.commit()
-        cmdBuf.waitUntilCompleted()
 
         // Read back results
         let resultPtr = pBuffer.contents().bindMemory(to: Float.self, capacity: count)
@@ -196,7 +233,8 @@ final class PuckMetalSolver {
             mu: Float(mu)
         )
 
-        let tgSize = MTLSize(width: min(16, nr), height: min(16, nz), depth: 1)
+        let tgSize = safeThreadgroupSize(pipeline: pipeline, gridWidth: nr, gridHeight: nz)
+        let tgCount = threadgroupCount(gridWidth: nr, gridHeight: nz, tgSize: tgSize)
 
         guard let cmdBuf = queue.makeCommandBuffer(),
               let encoder = cmdBuf.makeComputeCommandEncoder()
@@ -209,11 +247,13 @@ final class PuckMetalSolver {
         encoder.setBuffer(vzBuf, offset: 0, index: 3)
         encoder.setBuffer(vmagBuf, offset: 0, index: 4)
         encoder.setBytes(&params, length: MemoryLayout<MetalSolverParams>.size, index: 5)
-        encoder.dispatchThreads(MTLSize(width: nr, height: nz, depth: 1), threadsPerThreadgroup: tgSize)
+        encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
         encoder.endEncoding()
 
         cmdBuf.commit()
         cmdBuf.waitUntilCompleted()
+
+        if cmdBuf.status == .error { return nil }
 
         let vrPtr = vrBuf.contents().bindMemory(to: Float.self, capacity: count)
         let vzPtr = vzBuf.contents().bindMemory(to: Float.self, capacity: count)
@@ -257,7 +297,8 @@ final class PuckMetalSolver {
             seed: seed
         )
 
-        let tgSize = MTLSize(width: min(16, nr), height: min(16, nz), depth: 1)
+        let tgSize = safeThreadgroupSize(pipeline: pipeline, gridWidth: nr, gridHeight: nz)
+        let tgCount = threadgroupCount(gridWidth: nr, gridHeight: nz, tgSize: tgSize)
 
         guard let cmdBuf = queue.makeCommandBuffer(),
               let encoder = cmdBuf.makeComputeCommandEncoder()
@@ -266,11 +307,13 @@ final class PuckMetalSolver {
         encoder.setComputePipelineState(pipeline)
         encoder.setBuffer(kBuf, offset: 0, index: 0)
         encoder.setBytes(&params, length: MemoryLayout<MetalPermParams>.size, index: 1)
-        encoder.dispatchThreads(MTLSize(width: nr, height: nz, depth: 1), threadsPerThreadgroup: tgSize)
+        encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
         encoder.endEncoding()
 
         cmdBuf.commit()
         cmdBuf.waitUntilCompleted()
+
+        if cmdBuf.status == .error { return nil }
 
         let ptr = kBuf.contents().bindMemory(to: Float.self, capacity: count)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
