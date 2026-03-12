@@ -60,6 +60,9 @@ struct PuckSimulationView: View {
     @State private var useProfileMode = false
     @State private var profileCurvePoints: [ShotDataPoint] = []
     @State private var animationTimeMs: Double = 0
+    @State private var showingFullScreen = false
+    @State private var adaptiveGridRows: Int = 384
+    @State private var adaptiveGridCols: Int = 200
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isCompact: Bool { horizontalSizeClass == .compact }
@@ -105,7 +108,36 @@ struct PuckSimulationView: View {
             .sheet(isPresented: $showParameterInfo) {
                 ParameterInfoSheet()
             }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showingFullScreen) {
+                FullScreenPuckView(
+                    result: result,
+                    vizMode: $vizMode,
+                    basketSpec: params.basket,
+                    grindSizeMicrons: params.grindSizeMicrons,
+                    tampPressureKg: params.tampPressureKg,
+                    animationProgress: animationProgress,
+                    cutX: $cutX,
+                    cutZ: $cutZ
+                )
+            }
+            #else
+            .sheet(isPresented: $showingFullScreen) {
+                FullScreenPuckView(
+                    result: result,
+                    vizMode: $vizMode,
+                    basketSpec: params.basket,
+                    grindSizeMicrons: params.grindSizeMicrons,
+                    tampPressureKg: params.tampPressureKg,
+                    animationProgress: animationProgress,
+                    cutX: $cutX,
+                    cutZ: $cutZ
+                )
+                .frame(minWidth: 600, minHeight: 500)
+            }
+            #endif
             .task {
+                calibrateResolution()
                 await runSimulation()
             }
             .onChangeCompat(of: paramFingerprint) {
@@ -117,8 +149,10 @@ struct PuckSimulationView: View {
                 simulationSerial += 1
                 let serial = simulationSerial
                 let p = params
+                let rows = adaptiveGridRows
+                let cols = adaptiveGridCols
                 Task {
-                    let res = await Task.detached { PuckCFDSolver.simulate(params: p) }.value
+                    let res = await Task.detached { PuckCFDSolver.simulate(params: p, gridRows: rows, gridCols: cols) }.value
                     guard serial == simulationSerial else { return }
                     withAnimation(.easeInOut(duration: 0.3)) { result = res }
                     isComputing = false
@@ -446,6 +480,18 @@ struct PuckSimulationView: View {
                                 }
 
                                 Spacer()
+
+                                Button {
+                                    showingFullScreen = true
+                                } label: {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 34, height: 34)
+                                        .background(.ultraThinMaterial)
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
                             }
 
                             // Z cut slider (horizontal, full width at bottom)
@@ -1009,13 +1055,40 @@ struct PuckSimulationView: View {
     private func runSimulation() async {
         isComputing = true
         let p = params
+        let rows = adaptiveGridRows
+        let cols = adaptiveGridCols
         let res = await Task.detached {
-            PuckCFDSolver.simulate(params: p)
+            PuckCFDSolver.simulate(params: p, gridRows: rows, gridCols: cols)
         }.value
         withAnimation(.easeInOut(duration: 0.3)) {
             result = res
         }
         isComputing = false
+    }
+
+    /// Benchmark a small simulation to calibrate grid resolution for this device.
+    /// Targets ~200ms per simulation for responsive interaction.
+    private func calibrateResolution() {
+        let benchParams = params
+        let benchRows = 96
+        let benchCols = 50
+        let start = CFAbsoluteTimeGetCurrent()
+        _ = PuckCFDSolver.simulate(params: benchParams, gridRows: benchRows, gridCols: benchCols)
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+
+        // Scale from benchmark to target frame budget (~200ms)
+        let targetTime: Double = 0.20
+        // Cell count scales roughly linearly with time
+        let benchCells = Double(benchRows * benchCols)
+        let targetCells = benchCells * (targetTime / max(elapsed, 0.001))
+
+        // Maintain ~1.9:1 row:col aspect ratio
+        let scaledCols = sqrt(targetCells / 1.92)
+        let scaledRows = scaledCols * 1.92
+
+        // Clamp to reasonable range: min 96x50 (very slow devices), max 384x200 (fast)
+        adaptiveGridCols = max(50, min(200, Int(scaledCols)))
+        adaptiveGridRows = max(96, min(384, Int(scaledRows)))
     }
 
     // MARK: - Extraction Animation
@@ -1454,6 +1527,113 @@ struct ProfileCurveChart: View {
                     }
                     Spacer()
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Full Screen Puck View
+
+struct FullScreenPuckView: View {
+    let result: PuckSimulationResult?
+    @Binding var vizMode: PuckVizMode
+    let basketSpec: BasketSpec
+    let grindSizeMicrons: Double
+    let tampPressureKg: Double
+    let animationProgress: Double
+    @Binding var cutX: Double
+    @Binding var cutZ: Double
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.04, green: 0.04, blue: 0.07)
+                .ignoresSafeArea()
+
+            if let result = result {
+                Puck3DSceneView(
+                    result: result,
+                    mode: vizMode,
+                    basketSpec: basketSpec,
+                    grindSizeMicrons: grindSizeMicrons,
+                    tampPressureKg: tampPressureKg,
+                    animationProgress: animationProgress,
+                    cutX: cutX,
+                    cutZ: cutZ
+                )
+                .ignoresSafeArea()
+            }
+
+            // Overlay controls
+            VStack {
+                HStack {
+                    // Mode picker
+                    HStack(spacing: 3) {
+                        ForEach(PuckVizMode.allCases) { mode in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    vizMode = mode
+                                }
+                            } label: {
+                                Image(systemName: mode.icon)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(vizMode == mode ? .white : .white.opacity(0.4))
+                                    .frame(width: 32, height: 32)
+                                    .background(vizMode == mode ? Color.cyan.opacity(0.3) : .clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(4)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    Spacer()
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+
+                Spacer()
+
+                // Bottom: cut sliders
+                VStack(spacing: 8) {
+                    HStack(spacing: 12) {
+                        Text("Front")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.4))
+                        Slider(value: $cutZ, in: 0.0...1.0)
+                            .tint(.cyan.opacity(0.4))
+                    }
+                    HStack(spacing: 12) {
+                        Text("Side")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.4))
+                        Slider(value: $cutX, in: 0.0...1.0)
+                            .tint(.cyan.opacity(0.4))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.7)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
         }
     }
