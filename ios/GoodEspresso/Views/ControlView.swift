@@ -510,9 +510,16 @@ struct ExtractionChartSection: View {
         .padding()
         .background(Color.secondarySystemGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        #if os(iOS)
         .fullScreenCover(isPresented: $showingFullScreen) {
             FullScreenChartView(dataPoints: dataPoints, isLive: isLive, title: chartTitle)
         }
+        #else
+        .sheet(isPresented: $showingFullScreen) {
+            FullScreenChartView(dataPoints: dataPoints, isLive: isLive, title: chartTitle)
+                .frame(minWidth: 600, minHeight: 400)
+        }
+        #endif
     }
 }
 
