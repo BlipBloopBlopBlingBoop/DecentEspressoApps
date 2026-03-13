@@ -34,6 +34,8 @@
 		1A0000047 /* Puck3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000046; };
 		1A0000049 /* PuckMetalSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000048; };
 		1A000004B /* PuckSolver.metal in Sources */ = {isa = PBXBuildFile; fileRef = 1A000004A; };
+		1A000004E /* PuckVolumeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000004D; };
+		1A0000050 /* PuckVolumeRender.metal in Sources */ = {isa = PBXBuildFile; fileRef = 1A000004F; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +69,8 @@
 		1A0000046 /* Puck3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Puck3DView.swift; sourceTree = "<group>"; };
 		1A0000048 /* PuckMetalSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckMetalSolver.swift; sourceTree = "<group>"; };
 		1A000004A /* PuckSolver.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = PuckSolver.metal; sourceTree = "<group>"; };
+		1A000004D /* PuckVolumeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckVolumeRenderer.swift; sourceTree = "<group>"; };
+		1A000004F /* PuckVolumeRender.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = PuckVolumeRender.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +145,7 @@
 				1A0000040 /* AnalyticsView.swift */,
 				1A0000044 /* PuckSimulationView.swift */,
 				1A0000046 /* Puck3DView.swift */,
+				1A000004D /* PuckVolumeRenderer.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -168,6 +173,7 @@
 			isa = PBXGroup;
 			children = (
 				1A000004A /* PuckSolver.metal */,
+				1A000004F /* PuckVolumeRender.metal */,
 			);
 			path = Shaders;
 			sourceTree = "<group>";
@@ -267,6 +273,8 @@
 				1A0000047 /* Puck3DView.swift in Sources */,
 				1A0000049 /* PuckMetalSolver.swift in Sources */,
 				1A000004B /* PuckSolver.metal in Sources */,
+				1A000004E /* PuckVolumeRenderer.swift in Sources */,
+				1A0000050 /* PuckVolumeRender.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

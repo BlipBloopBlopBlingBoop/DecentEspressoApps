@@ -361,7 +361,7 @@ struct PuckCFDSolver {
                dr: dr, dz: dz,
                topPressure: deltaPressurePa,
                botPressure: exitPressurePa,
-               mu: mu, omega: 1.55, iterations: 400
+               mu: mu, omega: 1.55, iterations: 250
            ),
            let velocity = metalSolver.computeVelocity(
                pressure: gpuPressure, permField: flatPerm,

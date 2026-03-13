@@ -160,8 +160,20 @@ final class PuckMetalSolver {
 
         // Batch iterations into multiple command buffers to avoid GPU timeout.
         // Each command buffer handles up to 50 iterations (100 encoder passes).
+        // Check convergence between batches by sampling pressure values.
         let batchSize = 50
         var remaining = iterations
+        let convergenceTolerance: Float = 0.5  // Pa — matches CPU solver
+
+        // Sample points for convergence check (interior cells spread across grid)
+        let sampleIndices: [Int] = [
+            (nz / 4) * nr + nr / 4,
+            (nz / 4) * nr + 3 * nr / 4,
+            (nz / 2) * nr + nr / 2,
+            (3 * nz / 4) * nr + nr / 4,
+            (3 * nz / 4) * nr + 3 * nr / 4
+        ]
+        var prevSamples = [Float](repeating: 0, count: sampleIndices.count)
 
         while remaining > 0 {
             let batch = min(batchSize, remaining)
@@ -194,11 +206,24 @@ final class PuckMetalSolver {
             cmdBuf.waitUntilCompleted()
 
             if cmdBuf.status == .error {
-                // GPU failed — caller will fall back to CPU solver
                 return nil
             }
 
             remaining -= batch
+
+            // Check convergence by sampling a few pressure values.
+            // Since the buffer is storageModeShared, we can read directly.
+            let ptr = pBuffer.contents().bindMemory(to: Float.self, capacity: count)
+            var maxChange: Float = 0
+            for (i, idx) in sampleIndices.enumerated() {
+                let val = ptr[idx]
+                maxChange = max(maxChange, abs(val - prevSamples[i]))
+                prevSamples[i] = val
+            }
+            // Skip convergence check on first batch (prevSamples was zero)
+            if remaining < iterations - batchSize && maxChange < convergenceTolerance {
+                break
+            }
         }
 
         // Read back results

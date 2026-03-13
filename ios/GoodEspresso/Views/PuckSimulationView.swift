@@ -158,7 +158,7 @@ struct PuckSimulationView: View {
             }
             #endif
             .task {
-                calibrateResolution()
+                await calibrateResolution()
                 await runSimulation()
             }
             .onChangeCompat(of: paramFingerprint) {
@@ -465,8 +465,8 @@ struct PuckSimulationView: View {
             // 3D visualization with floating overlay controls
             ZStack {
                 if let result = result {
-                    // Full-bleed 3D scene
-                    Puck3DSceneView(
+                    // Full-bleed 3D scene (Metal ray-marching volume renderer)
+                    PuckVolumeView(
                         result: result,
                         mode: vizMode,
                         basketSpec: params.basket,
@@ -1104,27 +1104,32 @@ struct PuckSimulationView: View {
 
     /// Benchmark a small simulation to calibrate grid resolution for this device.
     /// Targets ~200ms per simulation for responsive interaction.
-    private func calibrateResolution() {
+    /// Runs benchmark off the main thread to avoid blocking UI at startup.
+    private func calibrateResolution() async {
         let benchParams = params
-        let benchRows = 96
-        let benchCols = 50
-        let start = CFAbsoluteTimeGetCurrent()
-        _ = PuckCFDSolver.simulate(params: benchParams, gridRows: benchRows, gridCols: benchCols)
-        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        let (rows, cols) = await Task.detached {
+            let benchRows = 96
+            let benchCols = 50
+            let start = CFAbsoluteTimeGetCurrent()
+            _ = PuckCFDSolver.simulate(params: benchParams, gridRows: benchRows, gridCols: benchCols)
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
 
-        // Scale from benchmark to target frame budget (~200ms)
-        let targetTime: Double = 0.20
-        // Cell count scales roughly linearly with time
-        let benchCells = Double(benchRows * benchCols)
-        let targetCells = benchCells * (targetTime / max(elapsed, 0.001))
+            // Scale from benchmark to target frame budget (~200ms)
+            let targetTime: Double = 0.20
+            let benchCells = Double(benchRows * benchCols)
+            let targetCells = benchCells * (targetTime / max(elapsed, 0.001))
 
-        // Maintain ~1.9:1 row:col aspect ratio
-        let scaledCols = sqrt(targetCells / 1.92)
-        let scaledRows = scaledCols * 1.92
+            // Maintain ~1.9:1 row:col aspect ratio
+            let scaledCols = sqrt(targetCells / 1.92)
+            let scaledRows = scaledCols * 1.92
 
-        // Clamp to reasonable range: min 96x50 (very slow devices), max 384x200 (fast)
-        adaptiveGridCols = max(50, min(200, Int(scaledCols)))
-        adaptiveGridRows = max(96, min(384, Int(scaledRows)))
+            // Clamp to reasonable range: min 96x50 (very slow devices), max 384x200 (fast)
+            let c = max(50, min(200, Int(scaledCols)))
+            let r = max(96, min(384, Int(scaledRows)))
+            return (r, c)
+        }.value
+        adaptiveGridRows = rows
+        adaptiveGridCols = cols
     }
 
     // MARK: - Extraction Animation
@@ -1587,7 +1592,7 @@ struct FullScreenPuckView: View {
                 .ignoresSafeArea()
 
             if let result = result {
-                Puck3DSceneView(
+                PuckVolumeView(
                     result: result,
                     mode: vizMode,
                     basketSpec: basketSpec,
