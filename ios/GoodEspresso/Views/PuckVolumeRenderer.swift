@@ -52,6 +52,9 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
     private var fieldRows: Int = 0
     private var fieldCols: Int = 0
 
+    /// Weak reference so the renderer can request redraws
+    weak var mtkView: MTKView?
+
     // Camera state (orbit camera)
     var cameraAngleX: Float = 0.4      // elevation
     var cameraAngleY: Float = 0.6      // azimuth
@@ -85,6 +88,27 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
     // MARK: - Upload field data as 2D texture
 
     func updateFieldTexture(field: [[Double]], rows: Int, cols: Int) {
+        // Reuse existing texture if dimensions match
+        if fieldRows == rows && fieldCols == cols, let existing = fieldTexture {
+            // Just update the data in-place
+            var data = [Float](repeating: 0, count: rows * cols)
+            for z in 0..<rows {
+                let row = field[z]
+                for r in 0..<cols {
+                    data[z * cols + r] = Float(row[r])
+                }
+            }
+            existing.replace(
+                region: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
+                                 size: MTLSize(width: cols, height: rows, depth: 1)),
+                mipmapLevel: 0,
+                withBytes: data,
+                bytesPerRow: cols * MemoryLayout<Float>.size
+            )
+            setNeedsDisplay()
+            return
+        }
+
         fieldRows = rows
         fieldCols = cols
 
@@ -98,11 +122,11 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
 
         guard let tex = device.makeTexture(descriptor: desc) else { return }
 
-        // Pack field data into row-major Float array
         var data = [Float](repeating: 0, count: rows * cols)
         for z in 0..<rows {
+            let row = field[z]
             for r in 0..<cols {
-                data[z * cols + r] = Float(field[z][r])
+                data[z * cols + r] = Float(row[r])
             }
         }
 
@@ -115,12 +139,21 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
         )
 
         fieldTexture = tex
+        setNeedsDisplay()
+    }
+
+    func setNeedsDisplay() {
+        #if canImport(UIKit)
+        mtkView?.setNeedsDisplay()
+        #elseif canImport(AppKit)
+        mtkView?.needsDisplay = true
+        #endif
     }
 
     // MARK: - Camera matrices
 
     private func viewProjectionMatrix(viewportSize: SIMD2<Float>) -> (simd_float4x4, SIMD3<Float>) {
-        let aspect = viewportSize.x / viewportSize.y
+        let aspect = viewportSize.x / max(viewportSize.y, 1)
 
         // Orbit camera
         let camX = cameraDistance * cos(cameraAngleX) * sin(cameraAngleY)
@@ -137,7 +170,9 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
 
     // MARK: - MTKViewDelegate
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        setNeedsDisplay()
+    }
 
     func draw(in view: MTKView) {
         guard let fieldTexture,
@@ -168,7 +203,7 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
             taperRatio: taperRatio,
             cutX: cutX,
             cutZ: cutZ,
-            stepSize: 0.008,   // ~125 steps through diameter
+            stepSize: 0.008,
             opacity: 0.85,
             grainIntensity: grainIntensity,
             vizMode: vizMode,
@@ -253,6 +288,60 @@ struct PuckVolumeView: View {
     }
 }
 
+// MARK: - Shared helpers
+
+private func selectField(result: PuckSimulationResult, mode: PuckVizMode) -> [[Double]] {
+    switch mode {
+    case .pressure:     return result.pressureField
+    case .flow:         return result.velocityField
+    case .extraction:   return result.extractionField
+    case .time:         return result.residenceTimeField
+    case .permeability: return result.permeabilityField
+    }
+}
+
+private func vizModeIndex(_ mode: PuckVizMode) -> UInt32 {
+    switch mode {
+    case .pressure:     return 0
+    case .flow:         return 1
+    case .extraction:   return 2
+    case .time:         return 3
+    case .permeability: return 4
+    }
+}
+
+private func configureRenderer(
+    _ renderer: PuckVolumeRendererEngine,
+    result: PuckSimulationResult,
+    mode: PuckVizMode,
+    basketSpec: BasketSpec,
+    grindSizeMicrons: Double,
+    tampPressureKg: Double,
+    cutX: Double, cutZ: Double,
+    animationProgress: Double
+) {
+    let field = selectField(result: result, mode: mode)
+    renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
+    renderer.vizMode = vizModeIndex(mode)
+    renderer.cutX = Float(cutX)
+    renderer.cutZ = Float(cutZ)
+    renderer.animationProgress = Float(animationProgress)
+    renderer.puckHeight = Float(basketSpec.depth / basketSpec.diameter) * 2.0
+    renderer.taperRatio = basketSpec.hasBackPressureValve ? 0.96 : 0.93
+    renderer.grindSizeMicrons = Float(grindSizeMicrons)
+    renderer.tampPressureKg = Float(tampPressureKg)
+}
+
+private func configureMTKView(_ view: MTKView) {
+    view.colorPixelFormat = .bgra8Unorm
+    view.framebufferOnly = false  // needed for compute shader writing
+    // Use on-demand rendering: only redraw when setNeedsDisplay is called.
+    // This avoids burning GPU at 60fps when nothing is changing.
+    view.isPaused = true
+    view.enableSetNeedsDisplay = true
+    view.clearColor = MTLClearColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+}
+
 // MARK: - Platform Representable
 
 #if canImport(UIKit)
@@ -273,14 +362,19 @@ struct PuckMetalViewRepresentable: UIViewRepresentable {
             return MTKView()
         }
         let view = MTKView(frame: .zero, device: device)
-        view.colorPixelFormat = .bgra8Unorm
-        view.framebufferOnly = false  // needed for compute shader writing
-        view.preferredFramesPerSecond = 60
-        view.clearColor = MTLClearColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+        configureMTKView(view)
 
         if let renderer = PuckVolumeRendererEngine(device: device) {
             context.coordinator.renderer = renderer
+            renderer.mtkView = view
             view.delegate = renderer
+
+            // Upload initial field data so the first draw has something to show
+            configureRenderer(
+                renderer, result: result, mode: mode, basketSpec: basketSpec,
+                grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+                cutX: cutX, cutZ: cutZ, animationProgress: animationProgress
+            )
 
             // Add gesture recognizers
             let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
@@ -294,20 +388,11 @@ struct PuckMetalViewRepresentable: UIViewRepresentable {
 
     func updateUIView(_ view: MTKView, context: Context) {
         guard let renderer = context.coordinator.renderer else { return }
-
-        // Update field data
-        let field = selectField(result: result, mode: mode)
-        renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
-
-        // Update visualization params
-        renderer.vizMode = vizModeIndex(mode)
-        renderer.cutX = Float(cutX)
-        renderer.cutZ = Float(cutZ)
-        renderer.animationProgress = Float(animationProgress)
-        renderer.puckHeight = Float(basketSpec.depth / basketSpec.diameter) * 2.0
-        renderer.taperRatio = basketSpec.hasBackPressureValve ? 0.96 : 0.93
-        renderer.grindSizeMicrons = Float(grindSizeMicrons)
-        renderer.tampPressureKg = Float(tampPressureKg)
+        configureRenderer(
+            renderer, result: result, mode: mode, basketSpec: basketSpec,
+            grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ, animationProgress: animationProgress
+        )
     }
 
     class Coordinator: NSObject {
@@ -321,6 +406,7 @@ struct PuckMetalViewRepresentable: UIViewRepresentable {
             renderer.cameraAngleX += Float(translation.y) * sensitivity
             renderer.cameraAngleX = max(-Float.pi/2 + 0.1, min(Float.pi/2 - 0.1, renderer.cameraAngleX))
             gesture.setTranslation(.zero, in: gesture.view)
+            renderer.setNeedsDisplay()
         }
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
@@ -328,26 +414,7 @@ struct PuckMetalViewRepresentable: UIViewRepresentable {
             renderer.cameraDistance /= Float(gesture.scale)
             renderer.cameraDistance = max(1.5, min(8.0, renderer.cameraDistance))
             gesture.scale = 1
-        }
-    }
-
-    private func selectField(result: PuckSimulationResult, mode: PuckVizMode) -> [[Double]] {
-        switch mode {
-        case .pressure:     return result.pressureField
-        case .flow:         return result.velocityField
-        case .extraction:   return result.extractionField
-        case .time:         return result.residenceTimeField
-        case .permeability: return result.permeabilityField
-        }
-    }
-
-    private func vizModeIndex(_ mode: PuckVizMode) -> UInt32 {
-        switch mode {
-        case .pressure:     return 0
-        case .flow:         return 1
-        case .extraction:   return 2
-        case .time:         return 3
-        case .permeability: return 4
+            renderer.setNeedsDisplay()
         }
     }
 }
@@ -369,56 +436,35 @@ struct PuckMetalViewRepresentable: NSViewRepresentable {
             return MTKView()
         }
         let view = MTKView(frame: .zero, device: device)
-        view.colorPixelFormat = .bgra8Unorm
-        view.framebufferOnly = false
-        view.preferredFramesPerSecond = 60
-        view.clearColor = MTLClearColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+        configureMTKView(view)
 
         if let renderer = PuckVolumeRendererEngine(device: device) {
             context.coordinator.renderer = renderer
+            renderer.mtkView = view
             view.delegate = renderer
+
+            // Upload initial field data
+            configureRenderer(
+                renderer, result: result, mode: mode, basketSpec: basketSpec,
+                grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+                cutX: cutX, cutZ: cutZ, animationProgress: animationProgress
+            )
         }
 
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
+    func updateNSView(_ view: MTKView, context: Context) {
         guard let renderer = context.coordinator.renderer else { return }
-
-        let field = selectField(result: result, mode: mode)
-        renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
-        renderer.vizMode = vizModeIndex(mode)
-        renderer.cutX = Float(cutX)
-        renderer.cutZ = Float(cutZ)
-        renderer.animationProgress = Float(animationProgress)
-        renderer.puckHeight = Float(basketSpec.depth / basketSpec.diameter) * 2.0
-        renderer.taperRatio = basketSpec.hasBackPressureValve ? 0.96 : 0.93
-        renderer.grindSizeMicrons = Float(grindSizeMicrons)
-        renderer.tampPressureKg = Float(tampPressureKg)
+        configureRenderer(
+            renderer, result: result, mode: mode, basketSpec: basketSpec,
+            grindSizeMicrons: grindSizeMicrons, tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ, animationProgress: animationProgress
+        )
     }
 
     class Coordinator: NSObject {
         var renderer: PuckVolumeRendererEngine?
-    }
-
-    private func selectField(result: PuckSimulationResult, mode: PuckVizMode) -> [[Double]] {
-        switch mode {
-        case .pressure:     return result.pressureField
-        case .flow:         return result.velocityField
-        case .extraction:   return result.extractionField
-        case .time:         return result.residenceTimeField
-        case .permeability: return result.permeabilityField
-        }
-    }
-
-    private func vizModeIndex(_ mode: PuckVizMode) -> UInt32 {
-        switch mode {
-        case .pressure:     return 0
-        case .flow:         return 1
-        case .extraction:   return 2
-        case .time:         return 3
-        case .permeability: return 4
-        }
     }
 }
 #endif
