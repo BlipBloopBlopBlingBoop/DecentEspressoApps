@@ -1,0 +1,424 @@
+//
+//  PuckVolumeRenderer.swift
+//  Good Espresso
+//
+//  Metal-based GPU volume renderer for puck CFD visualization.
+//  Uses ray marching through the axisymmetric simulation field,
+//  rendered as a compute shader writing to a drawable texture.
+//
+//  This replaces the SceneKit vertex-mesh approach with a "video game"
+//  architecture: the GPU directly ray-marches through the field data,
+//  producing smooth, continuous visualization without polygon artifacts.
+//
+//  The 2D (r,z) simulation field is uploaded as a Metal texture and
+//  sampled with bilinear filtering during the ray march, exploiting
+//  the rotational symmetry of the cylindrical puck.
+//
+
+import SwiftUI
+import MetalKit
+import simd
+
+// MARK: - Uniforms (must match Metal struct VolumeUniforms)
+
+struct VolumeUniforms {
+    var invViewProj: simd_float4x4
+    var cameraPos: SIMD4<Float>
+    var lightDir: SIMD4<Float>
+    var lightColor: SIMD4<Float>
+    var ambientColor: SIMD4<Float>
+    var resolution: SIMD2<Float>
+    var puckRadius: Float
+    var puckHeight: Float
+    var taperRatio: Float
+    var cutX: Float
+    var cutZ: Float
+    var stepSize: Float
+    var opacity: Float
+    var grainIntensity: Float
+    var vizMode: UInt32
+    var animProgress: Float
+    var fieldRows: UInt32
+    var fieldCols: UInt32
+}
+
+// MARK: - Metal Volume Renderer
+
+final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
+    private let device: MTLDevice
+    private let commandQueue: MTLCommandQueue
+    private let pipeline: MTLComputePipelineState
+    private var fieldTexture: MTLTexture?
+    private var fieldRows: Int = 0
+    private var fieldCols: Int = 0
+
+    // Camera state (orbit camera)
+    var cameraAngleX: Float = 0.4      // elevation
+    var cameraAngleY: Float = 0.6      // azimuth
+    var cameraDistance: Float = 3.5
+    var cameraPanX: Float = 0
+    var cameraPanY: Float = 0
+
+    // Visualization parameters
+    var vizMode: UInt32 = 1            // flow by default
+    var cutX: Float = 0.55
+    var cutZ: Float = 0.55
+    var animationProgress: Float = 1.0
+    var puckHeight: Float = 0.5
+    var taperRatio: Float = 0.93
+    var grindSizeMicrons: Float = 400
+    var tampPressureKg: Float = 15
+
+    init?(device: MTLDevice) {
+        guard let queue = device.makeCommandQueue(),
+              let library = device.makeDefaultLibrary(),
+              let fn = library.makeFunction(name: "puckVolumeRayMarch"),
+              let pipe = try? device.makeComputePipelineState(function: fn)
+        else { return nil }
+
+        self.device = device
+        self.commandQueue = queue
+        self.pipeline = pipe
+        super.init()
+    }
+
+    // MARK: - Upload field data as 2D texture
+
+    func updateFieldTexture(field: [[Double]], rows: Int, cols: Int) {
+        fieldRows = rows
+        fieldCols = cols
+
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r32Float,
+            width: cols, height: rows,
+            mipmapped: false
+        )
+        desc.usage = [.shaderRead]
+        desc.storageMode = .shared
+
+        guard let tex = device.makeTexture(descriptor: desc) else { return }
+
+        // Pack field data into row-major Float array
+        var data = [Float](repeating: 0, count: rows * cols)
+        for z in 0..<rows {
+            for r in 0..<cols {
+                data[z * cols + r] = Float(field[z][r])
+            }
+        }
+
+        tex.replace(
+            region: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
+                             size: MTLSize(width: cols, height: rows, depth: 1)),
+            mipmapLevel: 0,
+            withBytes: data,
+            bytesPerRow: cols * MemoryLayout<Float>.size
+        )
+
+        fieldTexture = tex
+    }
+
+    // MARK: - Camera matrices
+
+    private func viewProjectionMatrix(viewportSize: SIMD2<Float>) -> (simd_float4x4, SIMD3<Float>) {
+        let aspect = viewportSize.x / viewportSize.y
+
+        // Orbit camera
+        let camX = cameraDistance * cos(cameraAngleX) * sin(cameraAngleY)
+        let camY = cameraDistance * sin(cameraAngleX)
+        let camZ = cameraDistance * cos(cameraAngleX) * cos(cameraAngleY)
+        let eye = SIMD3<Float>(camX + cameraPanX, camY + cameraPanY, camZ)
+        let target = SIMD3<Float>(cameraPanX, cameraPanY, 0)
+        let up = SIMD3<Float>(0, 1, 0)
+
+        let view = lookAt(eye: eye, center: target, up: up)
+        let proj = perspective(fov: Float.pi / 5.5, aspect: aspect, near: 0.01, far: 50)
+        return (proj * view, eye)
+    }
+
+    // MARK: - MTKViewDelegate
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+    func draw(in view: MTKView) {
+        guard let fieldTexture,
+              let drawable = view.currentDrawable,
+              let cmdBuf = commandQueue.makeCommandBuffer(),
+              let encoder = cmdBuf.makeComputeCommandEncoder()
+        else { return }
+
+        let w = Int(view.drawableSize.width)
+        let h = Int(view.drawableSize.height)
+        guard w > 0, h > 0 else { return }
+
+        let viewportSize = SIMD2<Float>(Float(w), Float(h))
+        let (viewProj, eye) = viewProjectionMatrix(viewportSize: viewportSize)
+        let invViewProj = viewProj.inverse
+
+        let grainIntensity: Float = 0.03 + 0.06 * min(1.0, grindSizeMicrons / 600.0)
+
+        var uniforms = VolumeUniforms(
+            invViewProj: invViewProj,
+            cameraPos: SIMD4<Float>(eye.x, eye.y, eye.z, 1),
+            lightDir: normalize(SIMD4<Float>(0.5, 0.8, 0.5, 0)),
+            lightColor: SIMD4<Float>(1.0, 0.96, 0.90, 1.1),
+            ambientColor: SIMD4<Float>(0.75, 0.73, 0.70, 0.35),
+            resolution: viewportSize,
+            puckRadius: 1.0,
+            puckHeight: puckHeight,
+            taperRatio: taperRatio,
+            cutX: cutX,
+            cutZ: cutZ,
+            stepSize: 0.008,   // ~125 steps through diameter
+            opacity: 0.85,
+            grainIntensity: grainIntensity,
+            vizMode: vizMode,
+            animProgress: animationProgress,
+            fieldRows: UInt32(fieldRows),
+            fieldCols: UInt32(fieldCols)
+        )
+
+        encoder.setComputePipelineState(pipeline)
+        encoder.setTexture(drawable.texture, index: 0)
+        encoder.setTexture(fieldTexture, index: 1)
+        encoder.setBytes(&uniforms, length: MemoryLayout<VolumeUniforms>.size, index: 0)
+
+        let tgSize = MTLSize(
+            width: min(16, pipeline.threadExecutionWidth),
+            height: min(16, pipeline.maxTotalThreadsPerThreadgroup / pipeline.threadExecutionWidth),
+            depth: 1
+        )
+        let tgCount = MTLSize(
+            width: (w + tgSize.width - 1) / tgSize.width,
+            height: (h + tgSize.height - 1) / tgSize.height,
+            depth: 1
+        )
+
+        encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
+        encoder.endEncoding()
+
+        cmdBuf.present(drawable)
+        cmdBuf.commit()
+    }
+
+    // MARK: - Matrix helpers
+
+    private func lookAt(eye: SIMD3<Float>, center: SIMD3<Float>, up: SIMD3<Float>) -> simd_float4x4 {
+        let f = normalize(center - eye)
+        let s = normalize(cross(f, up))
+        let u = cross(s, f)
+        var m = simd_float4x4(1)
+        m[0][0] = s.x; m[1][0] = s.y; m[2][0] = s.z
+        m[0][1] = u.x; m[1][1] = u.y; m[2][1] = u.z
+        m[0][2] = -f.x; m[1][2] = -f.y; m[2][2] = -f.z
+        m[3][0] = -dot(s, eye)
+        m[3][1] = -dot(u, eye)
+        m[3][2] = dot(f, eye)
+        return m
+    }
+
+    private func perspective(fov: Float, aspect: Float, near: Float, far: Float) -> simd_float4x4 {
+        let y = 1 / tan(fov * 0.5)
+        let x = y / aspect
+        let z = far / (near - far)
+        var m = simd_float4x4(0)
+        m[0][0] = x
+        m[1][1] = y
+        m[2][2] = z
+        m[2][3] = -1
+        m[3][2] = z * near
+        return m
+    }
+}
+
+// MARK: - SwiftUI Wrapper
+
+struct PuckVolumeView: View {
+    let result: PuckSimulationResult
+    let mode: PuckVizMode
+    let basketSpec: BasketSpec
+    let grindSizeMicrons: Double
+    let tampPressureKg: Double
+    var animationProgress: Double = 1.0
+    var cutX: Double = 0.55
+    var cutZ: Double = 0.55
+
+    var body: some View {
+        PuckMetalViewRepresentable(
+            result: result, mode: mode, basketSpec: basketSpec,
+            grindSizeMicrons: grindSizeMicrons,
+            tampPressureKg: tampPressureKg,
+            cutX: cutX, cutZ: cutZ,
+            animationProgress: animationProgress
+        )
+    }
+}
+
+// MARK: - Platform Representable
+
+#if canImport(UIKit)
+struct PuckMetalViewRepresentable: UIViewRepresentable {
+    let result: PuckSimulationResult
+    let mode: PuckVizMode
+    let basketSpec: BasketSpec
+    let grindSizeMicrons: Double
+    let tampPressureKg: Double
+    let cutX: Double
+    let cutZ: Double
+    var animationProgress: Double = 1.0
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> MTKView {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            return MTKView()
+        }
+        let view = MTKView(frame: .zero, device: device)
+        view.colorPixelFormat = .bgra8Unorm
+        view.framebufferOnly = false  // needed for compute shader writing
+        view.preferredFramesPerSecond = 60
+        view.clearColor = MTLClearColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+
+        if let renderer = PuckVolumeRendererEngine(device: device) {
+            context.coordinator.renderer = renderer
+            view.delegate = renderer
+
+            // Add gesture recognizers
+            let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+            view.addGestureRecognizer(pan)
+            let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+            view.addGestureRecognizer(pinch)
+        }
+
+        return view
+    }
+
+    func updateUIView(_ view: MTKView, context: Context) {
+        guard let renderer = context.coordinator.renderer else { return }
+
+        // Update field data
+        let field = selectField(result: result, mode: mode)
+        renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
+
+        // Update visualization params
+        renderer.vizMode = vizModeIndex(mode)
+        renderer.cutX = Float(cutX)
+        renderer.cutZ = Float(cutZ)
+        renderer.animationProgress = Float(animationProgress)
+        renderer.puckHeight = Float(basketSpec.depth / basketSpec.diameter) * 2.0
+        renderer.taperRatio = basketSpec.hasBackPressureValve ? 0.96 : 0.93
+        renderer.grindSizeMicrons = Float(grindSizeMicrons)
+        renderer.tampPressureKg = Float(tampPressureKg)
+    }
+
+    class Coordinator: NSObject {
+        var renderer: PuckVolumeRendererEngine?
+
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard let renderer else { return }
+            let translation = gesture.translation(in: gesture.view)
+            let sensitivity: Float = 0.005
+            renderer.cameraAngleY -= Float(translation.x) * sensitivity
+            renderer.cameraAngleX += Float(translation.y) * sensitivity
+            renderer.cameraAngleX = max(-Float.pi/2 + 0.1, min(Float.pi/2 - 0.1, renderer.cameraAngleX))
+            gesture.setTranslation(.zero, in: gesture.view)
+        }
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard let renderer else { return }
+            renderer.cameraDistance /= Float(gesture.scale)
+            renderer.cameraDistance = max(1.5, min(8.0, renderer.cameraDistance))
+            gesture.scale = 1
+        }
+    }
+
+    private func selectField(result: PuckSimulationResult, mode: PuckVizMode) -> [[Double]] {
+        switch mode {
+        case .pressure:     return result.pressureField
+        case .flow:         return result.velocityField
+        case .extraction:   return result.extractionField
+        case .time:         return result.residenceTimeField
+        case .permeability: return result.permeabilityField
+        }
+    }
+
+    private func vizModeIndex(_ mode: PuckVizMode) -> UInt32 {
+        switch mode {
+        case .pressure:     return 0
+        case .flow:         return 1
+        case .extraction:   return 2
+        case .time:         return 3
+        case .permeability: return 4
+        }
+    }
+}
+#elseif canImport(AppKit)
+struct PuckMetalViewRepresentable: NSViewRepresentable {
+    let result: PuckSimulationResult
+    let mode: PuckVizMode
+    let basketSpec: BasketSpec
+    let grindSizeMicrons: Double
+    let tampPressureKg: Double
+    let cutX: Double
+    let cutZ: Double
+    var animationProgress: Double = 1.0
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> MTKView {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            return MTKView()
+        }
+        let view = MTKView(frame: .zero, device: device)
+        view.colorPixelFormat = .bgra8Unorm
+        view.framebufferOnly = false
+        view.preferredFramesPerSecond = 60
+        view.clearColor = MTLClearColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+
+        if let renderer = PuckVolumeRendererEngine(device: device) {
+            context.coordinator.renderer = renderer
+            view.delegate = renderer
+        }
+
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        guard let renderer = context.coordinator.renderer else { return }
+
+        let field = selectField(result: result, mode: mode)
+        renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
+        renderer.vizMode = vizModeIndex(mode)
+        renderer.cutX = Float(cutX)
+        renderer.cutZ = Float(cutZ)
+        renderer.animationProgress = Float(animationProgress)
+        renderer.puckHeight = Float(basketSpec.depth / basketSpec.diameter) * 2.0
+        renderer.taperRatio = basketSpec.hasBackPressureValve ? 0.96 : 0.93
+        renderer.grindSizeMicrons = Float(grindSizeMicrons)
+        renderer.tampPressureKg = Float(tampPressureKg)
+    }
+
+    class Coordinator: NSObject {
+        var renderer: PuckVolumeRendererEngine?
+    }
+
+    private func selectField(result: PuckSimulationResult, mode: PuckVizMode) -> [[Double]] {
+        switch mode {
+        case .pressure:     return result.pressureField
+        case .flow:         return result.velocityField
+        case .extraction:   return result.extractionField
+        case .time:         return result.residenceTimeField
+        case .permeability: return result.permeabilityField
+        }
+    }
+
+    private func vizModeIndex(_ mode: PuckVizMode) -> UInt32 {
+        switch mode {
+        case .pressure:     return 0
+        case .flow:         return 1
+        case .extraction:   return 2
+        case .time:         return 3
+        case .permeability: return 4
+        }
+    }
+}
+#endif
