@@ -217,14 +217,20 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
         encoder.setTexture(fieldTexture, index: 1)
         encoder.setBytes(&uniforms, length: MemoryLayout<VolumeUniforms>.size, index: 0)
 
-        let tgSize = MTLSize(
-            width: min(16, pipeline.threadExecutionWidth),
-            height: min(16, pipeline.maxTotalThreadsPerThreadgroup / pipeline.threadExecutionWidth),
-            depth: 1
-        )
+        // Compute safe threadgroup size that doesn't exceed pipeline limits.
+        // threadExecutionWidth is typically 32 on Apple GPUs.
+        let maxThreads = pipeline.maxTotalThreadsPerThreadgroup
+        let execWidth = max(1, pipeline.threadExecutionWidth)
+        let tgW = min(execWidth, w)
+        let tgH = min(maxThreads / max(1, tgW), h)
+        guard tgW > 0, tgH > 0 else {
+            encoder.endEncoding()
+            return
+        }
+        let tgSize = MTLSize(width: tgW, height: tgH, depth: 1)
         let tgCount = MTLSize(
-            width: (w + tgSize.width - 1) / tgSize.width,
-            height: (h + tgSize.height - 1) / tgSize.height,
+            width: (w + tgW - 1) / tgW,
+            height: (h + tgH - 1) / tgH,
             depth: 1
         )
 
