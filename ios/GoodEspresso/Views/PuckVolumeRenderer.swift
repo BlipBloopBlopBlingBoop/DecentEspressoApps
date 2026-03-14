@@ -51,6 +51,11 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
     private var fieldTexture: MTLTexture?
     private var fieldRows: Int = 0
     private var fieldCols: Int = 0
+    /// Offscreen texture for compute shader output. Required because
+    /// drawable textures may not support compute write access on macOS.
+    private var offscreenTexture: MTLTexture?
+    private var offscreenWidth: Int = 0
+    private var offscreenHeight: Int = 0
 
     /// Weak reference so the renderer can request redraws
     weak var mtkView: MTKView?
@@ -174,16 +179,35 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
         setNeedsDisplay()
     }
 
+    /// Ensure the offscreen compute target texture matches the drawable size.
+    private func ensureOffscreenTexture(width: Int, height: Int) {
+        guard width != offscreenWidth || height != offscreenHeight else { return }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm,
+            width: width, height: height,
+            mipmapped: false
+        )
+        desc.usage = [.shaderWrite, .shaderRead]
+        desc.storageMode = .private
+        offscreenTexture = device.makeTexture(descriptor: desc)
+        offscreenWidth = width
+        offscreenHeight = height
+    }
+
     func draw(in view: MTKView) {
         guard let fieldTexture,
               let drawable = view.currentDrawable,
-              let cmdBuf = commandQueue.makeCommandBuffer(),
-              let encoder = cmdBuf.makeComputeCommandEncoder()
+              let cmdBuf = commandQueue.makeCommandBuffer()
         else { return }
 
         let w = Int(view.drawableSize.width)
         let h = Int(view.drawableSize.height)
         guard w > 0, h > 0 else { return }
+
+        // Ensure we have a writable offscreen texture for the compute shader.
+        // Drawable textures may not support compute write on all platforms.
+        ensureOffscreenTexture(width: w, height: h)
+        guard let offscreen = offscreenTexture else { return }
 
         let viewportSize = SIMD2<Float>(Float(w), Float(h))
         let (viewProj, eye) = viewProjectionMatrix(viewportSize: viewportSize)
@@ -212,21 +236,17 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
             fieldCols: UInt32(fieldCols)
         )
 
+        // Compute pass: ray-march into offscreen texture
+        guard let encoder = cmdBuf.makeComputeCommandEncoder() else { return }
         encoder.setComputePipelineState(pipeline)
-        encoder.setTexture(drawable.texture, index: 0)
+        encoder.setTexture(offscreen, index: 0)
         encoder.setTexture(fieldTexture, index: 1)
         encoder.setBytes(&uniforms, length: MemoryLayout<VolumeUniforms>.size, index: 0)
 
-        // Compute safe threadgroup size that doesn't exceed pipeline limits.
-        // threadExecutionWidth is typically 32 on Apple GPUs.
         let maxThreads = pipeline.maxTotalThreadsPerThreadgroup
         let execWidth = max(1, pipeline.threadExecutionWidth)
         let tgW = min(execWidth, w)
-        let tgH = min(maxThreads / max(1, tgW), h)
-        guard tgW > 0, tgH > 0 else {
-            encoder.endEncoding()
-            return
-        }
+        let tgH = max(1, min(maxThreads / max(1, tgW), h))
         let tgSize = MTLSize(width: tgW, height: tgH, depth: 1)
         let tgCount = MTLSize(
             width: (w + tgW - 1) / tgW,
@@ -236,6 +256,18 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
 
         encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
         encoder.endEncoding()
+
+        // Blit offscreen texture to drawable
+        guard let blit = cmdBuf.makeBlitCommandEncoder() else { return }
+        let origin = MTLOrigin(x: 0, y: 0, z: 0)
+        let size = MTLSize(width: w, height: h, depth: 1)
+        blit.copy(
+            from: offscreen, sourceSlice: 0, sourceLevel: 0,
+            sourceOrigin: origin, sourceSize: size,
+            to: drawable.texture, destinationSlice: 0, destinationLevel: 0,
+            destinationOrigin: origin
+        )
+        blit.endEncoding()
 
         cmdBuf.present(drawable)
         cmdBuf.commit()
