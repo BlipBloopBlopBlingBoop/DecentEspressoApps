@@ -243,18 +243,25 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
         encoder.setTexture(fieldTexture, index: 1)
         encoder.setBytes(&uniforms, length: MemoryLayout<VolumeUniforms>.size, index: 0)
 
-        let maxThreads = pipeline.maxTotalThreadsPerThreadgroup
         let execWidth = max(1, pipeline.threadExecutionWidth)
-        let tgW = min(execWidth, w)
-        let tgH = max(1, min(maxThreads / max(1, tgW), h))
+        let maxThreads = max(1, pipeline.maxTotalThreadsPerThreadgroup)
+        // Keep threadgroup width aligned to execution width and ensure
+        // the total thread count stays within the pipeline limit.
+        let tgW = min(execWidth, w, maxThreads)
+        let tgH = max(1, min(maxThreads / tgW, h))
         let tgSize = MTLSize(width: tgW, height: tgH, depth: 1)
-        let tgCount = MTLSize(
-            width: (w + tgW - 1) / tgW,
-            height: (h + tgH - 1) / tgH,
-            depth: 1
-        )
 
-        encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
+        if device.supportsFamily(.apple4) || device.supportsFamily(.mac2) {
+            let gridSize = MTLSize(width: w, height: h, depth: 1)
+            encoder.dispatchThreads(gridSize, threadsPerThreadgroup: tgSize)
+        } else {
+            let tgCount = MTLSize(
+                width: (w + tgW - 1) / tgW,
+                height: (h + tgH - 1) / tgH,
+                depth: 1
+            )
+            encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
+        }
         encoder.endEncoding()
 
         // Blit offscreen texture to drawable
