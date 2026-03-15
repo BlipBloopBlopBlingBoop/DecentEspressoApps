@@ -183,7 +183,7 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
     private func ensureOffscreenTexture(width: Int, height: Int) {
         guard width != offscreenWidth || height != offscreenHeight else { return }
         let desc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm,
+            pixelFormat: .rgba8Unorm,
             width: width, height: height,
             mipmapped: false
         )
@@ -241,7 +241,7 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
         encoder.setComputePipelineState(pipeline)
         encoder.setTexture(offscreen, index: 0)
         encoder.setTexture(fieldTexture, index: 1)
-        encoder.setBytes(&uniforms, length: MemoryLayout<VolumeUniforms>.size, index: 0)
+        encoder.setBytes(&uniforms, length: MemoryLayout<VolumeUniforms>.stride, index: 0)
 
         let execWidth = max(1, pipeline.threadExecutionWidth)
         let maxThreads = max(1, pipeline.maxTotalThreadsPerThreadgroup)
@@ -251,17 +251,8 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
         let tgH = max(1, min(maxThreads / tgW, h))
         let tgSize = MTLSize(width: tgW, height: tgH, depth: 1)
 
-        if device.supportsFamily(.apple4) || device.supportsFamily(.mac2) {
-            let gridSize = MTLSize(width: w, height: h, depth: 1)
-            encoder.dispatchThreads(gridSize, threadsPerThreadgroup: tgSize)
-        } else {
-            let tgCount = MTLSize(
-                width: (w + tgW - 1) / tgW,
-                height: (h + tgH - 1) / tgH,
-                depth: 1
-            )
-            encoder.dispatchThreadgroups(tgCount, threadsPerThreadgroup: tgSize)
-        }
+        let gridSize = MTLSize(width: w, height: h, depth: 1)
+        encoder.dispatchThreads(gridSize, threadsPerThreadgroup: tgSize)
         encoder.endEncoding()
 
         // Blit offscreen texture to drawable
@@ -378,8 +369,8 @@ private func configureRenderer(
 }
 
 private func configureMTKView(_ view: MTKView) {
-    view.colorPixelFormat = .bgra8Unorm
-    view.framebufferOnly = false  // needed for compute shader writing
+    view.colorPixelFormat = .rgba8Unorm
+    view.framebufferOnly = false
     // Use on-demand rendering: only redraw when setNeedsDisplay is called.
     // This avoids burning GPU at 60fps when nothing is changing.
     view.isPaused = true
