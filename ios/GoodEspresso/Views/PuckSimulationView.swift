@@ -54,13 +54,12 @@ struct PuckSimulationView: View {
     @State private var simulationSerial: Int = 0
     @State private var animationProgress: Double = 1.0
     @State private var isAnimating = false
-    @State private var cutX: Double = 0.55   // 0 = cut to center, 1 = no cut
-    @State private var cutZ: Double = 0.55   // 0 = cut to center, 1 = no cut
+    @State private var cutX: Double = 1.0    // 0 = cut to center, 1 = no cut
+    @State private var cutZ: Double = 0.0    // 0 = cut to center, 1 = no cut
     @State private var showGestureHints = true
     @State private var useProfileMode = false
     @State private var profileCurvePoints: [ShotDataPoint] = []
     @State private var animationTimeMs: Double = 0
-    @State private var showingFullScreen = false
     @State private var showingFullScreenChart = false
     @State private var adaptiveGridRows: Int = 384
     @State private var adaptiveGridCols: Int = 200
@@ -110,34 +109,6 @@ struct PuckSimulationView: View {
             .sheet(isPresented: $showParameterInfo) {
                 ParameterInfoSheet()
             }
-            #if os(iOS)
-            .fullScreenCover(isPresented: $showingFullScreen) {
-                FullScreenPuckView(
-                    result: result,
-                    vizMode: $vizMode,
-                    basketSpec: params.basket,
-                    grindSizeMicrons: params.grindSizeMicrons,
-                    tampPressureKg: params.tampPressureKg,
-                    animationProgress: animationProgress,
-                    cutX: $cutX,
-                    cutZ: $cutZ
-                )
-            }
-            #else
-            .sheet(isPresented: $showingFullScreen) {
-                FullScreenPuckView(
-                    result: result,
-                    vizMode: $vizMode,
-                    basketSpec: params.basket,
-                    grindSizeMicrons: params.grindSizeMicrons,
-                    tampPressureKg: params.tampPressureKg,
-                    animationProgress: animationProgress,
-                    cutX: $cutX,
-                    cutZ: $cutZ
-                )
-                .frame(minWidth: 600, minHeight: 500)
-            }
-            #endif
             #if os(iOS)
             .fullScreenCover(isPresented: $showingFullScreenChart) {
                 FullScreenProfileChartView(
@@ -576,18 +547,6 @@ struct PuckSimulationView: View {
                                 }
 
                                 Spacer()
-
-                                Button {
-                                    showingFullScreen = true
-                                } label: {
-                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                        .frame(width: 34, height: 34)
-                                        .background(.ultraThinMaterial)
-                                        .clipShape(Circle())
-                                }
-                                .buttonStyle(.plain)
                             }
 
                             // Z cut slider (horizontal, full width at bottom)
@@ -1628,113 +1587,6 @@ struct ProfileCurveChart: View {
                     }
                     Spacer()
                 }
-            }
-        }
-    }
-}
-
-// MARK: - Full Screen Puck View
-
-struct FullScreenPuckView: View {
-    let result: PuckSimulationResult?
-    @Binding var vizMode: PuckVizMode
-    let basketSpec: BasketSpec
-    let grindSizeMicrons: Double
-    let tampPressureKg: Double
-    let animationProgress: Double
-    @Binding var cutX: Double
-    @Binding var cutZ: Double
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            Color(red: 0.04, green: 0.04, blue: 0.07)
-                .ignoresSafeArea()
-
-            if let result = result {
-                PuckVolumeView(
-                    result: result,
-                    mode: vizMode,
-                    basketSpec: basketSpec,
-                    grindSizeMicrons: grindSizeMicrons,
-                    tampPressureKg: tampPressureKg,
-                    animationProgress: animationProgress,
-                    cutX: cutX,
-                    cutZ: cutZ
-                )
-                .ignoresSafeArea()
-            }
-
-            // Overlay controls
-            VStack {
-                HStack {
-                    // Mode picker
-                    HStack(spacing: 3) {
-                        ForEach(PuckVizMode.allCases) { mode in
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    vizMode = mode
-                                }
-                            } label: {
-                                Image(systemName: mode.icon)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(vizMode == mode ? .white : .white.opacity(0.4))
-                                    .frame(width: 32, height: 32)
-                                    .background(vizMode == mode ? Color.cyan.opacity(0.3) : .clear)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(4)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    Spacer()
-
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-
-                Spacer()
-
-                // Bottom: cut sliders
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        Text("Front")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.4))
-                        Slider(value: $cutZ, in: 0.0...1.0)
-                            .tint(.cyan.opacity(0.4))
-                    }
-                    HStack(spacing: 12) {
-                        Text("Side")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.4))
-                        Slider(value: $cutX, in: 0.0...1.0)
-                            .tint(.cyan.opacity(0.4))
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
             }
         }
     }
