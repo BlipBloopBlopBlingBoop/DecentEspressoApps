@@ -72,7 +72,8 @@ struct PuckSimulationView: View {
     private var paramFingerprint: String {
         "\(params.grindSizeMicrons)|\(params.doseGrams)|\(params.tampPressureKg)|" +
         "\(params.brewPressureBar)|\(params.waterTempC)|\(params.beanDensity)|" +
-        "\(params.moistureContent)|\(params.distributionQuality)|\(params.basket.id)"
+        "\(params.moistureContent)|\(params.distributionQuality)|\(params.basket.id)|" +
+        "\(params.showerScreen.id)"
     }
 
     var body: some View {
@@ -201,6 +202,7 @@ struct PuckSimulationView: View {
     private var compactLayout: some View {
         LazyVStack(spacing: 16) {
             basketSelector
+            showerScreenSelector
             profileCard
             visualizationCard
             parameterSliders
@@ -212,7 +214,10 @@ struct PuckSimulationView: View {
 
     private var wideLayout: some View {
         LazyVStack(spacing: 20) {
-            basketSelector
+            HStack(alignment: .top, spacing: 20) {
+                basketSelector
+                showerScreenSelector
+            }
 
             HStack(alignment: .top, spacing: 20) {
                 VStack(spacing: 16) {
@@ -281,6 +286,61 @@ struct PuckSimulationView: View {
                 .background(Color.orange.opacity(0.1))
                 .clipShape(Capsule())
             }
+        }
+        .analyticsCard()
+    }
+
+    // MARK: - Shower Screen Selector
+
+    private var showerScreenSelector: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.grid.3x3.fill")
+                    .foregroundStyle(.cyan)
+                Text("Shower Screen")
+                    .font(.headline)
+                Spacer()
+                Text(params.showerScreen.rawValue)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(ShowerScreenType.allCases) { screen in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                params.showerScreen = screen
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: screen == .none ? "xmark.circle" : "circle.grid.3x3.fill")
+                                    .font(.system(size: 16))
+                                Text(screen.rawValue)
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("\(Int(screen.flowUniformity * 100))%")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(params.showerScreen == screen ? Color.cyan.opacity(0.15) : Color.tertiarySystemGroupedBg)
+                            .foregroundStyle(params.showerScreen == screen ? .cyan : .primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .strokeBorder(params.showerScreen == screen ? Color.cyan : Color.clear, lineWidth: 1.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Text(params.showerScreen.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .transition(.opacity)
         }
         .analyticsCard()
     }
