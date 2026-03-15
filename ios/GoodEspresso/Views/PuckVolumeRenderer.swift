@@ -68,6 +68,8 @@ final class PuckVolumeRendererEngine: NSObject, MTKViewDelegate {
     var cameraPanY: Float = 0
 
     // Visualization parameters
+    var hasFieldData: Bool { fieldTexture != nil }
+    var lastFieldKey: String = ""
     var vizMode: UInt32 = 1            // flow by default
     var cutX: Float = 0.55
     var cutZ: Float = 0.55
@@ -356,9 +358,18 @@ private func configureRenderer(
     cutX: Double, cutZ: Double,
     animationProgress: Double
 ) {
-    let field = selectField(result: result, mode: mode)
-    renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
-    renderer.vizMode = vizModeIndex(mode)
+    // Only re-upload the field texture when the data or mode actually changed.
+    // This is the expensive path (Double→Float conversion + GPU upload).
+    let newMode = vizModeIndex(mode)
+    let fieldKey = "\(result.gridRows)x\(result.gridCols)|\(result.totalFlowRate)|\(result.channelingRisk)"
+    if renderer.vizMode != newMode || renderer.lastFieldKey != fieldKey || !renderer.hasFieldData {
+        let field = selectField(result: result, mode: mode)
+        renderer.updateFieldTexture(field: field, rows: result.gridRows, cols: result.gridCols)
+        renderer.vizMode = newMode
+        renderer.lastFieldKey = fieldKey
+    }
+
+    // Cheap uniform updates — these just set floats and request a redraw
     renderer.cutX = Float(cutX)
     renderer.cutZ = Float(cutZ)
     renderer.animationProgress = Float(animationProgress)
@@ -366,6 +377,7 @@ private func configureRenderer(
     renderer.taperRatio = basketSpec.hasBackPressureValve ? 0.96 : 0.93
     renderer.grindSizeMicrons = Float(grindSizeMicrons)
     renderer.tampPressureKg = Float(tampPressureKg)
+    renderer.setNeedsDisplay()
 }
 
 private func configureMTKView(_ view: MTKView) {

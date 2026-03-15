@@ -71,6 +71,66 @@ struct BasketSpec: Identifiable, Hashable {
     static var `default`: BasketSpec { allBaskets[2] } // 18g
 }
 
+// MARK: - Shower Screen Types
+
+enum ShowerScreenType: String, CaseIterable, Identifiable, Hashable {
+    case standard   = "Standard"
+    case ims        = "IMS Precision"
+    case decent     = "Decent Stock"
+    case none       = "No Screen"
+
+    var id: String { rawValue }
+
+    /// Number of concentric hole rings for 3D visualization
+    var holeRings: Int {
+        switch self {
+        case .standard: return 6
+        case .ims:      return 10
+        case .decent:   return 8
+        case .none:     return 0
+        }
+    }
+
+    /// Holes per ring for 3D visualization
+    var holesPerRing: Int {
+        switch self {
+        case .standard: return 12
+        case .ims:      return 20
+        case .decent:   return 16
+        case .none:     return 0
+        }
+    }
+
+    /// Hole diameter (mm) — affects flow distribution uniformity
+    var holeDiameterMM: Double {
+        switch self {
+        case .standard: return 1.5
+        case .ims:      return 0.8
+        case .decent:   return 1.2
+        case .none:     return 0
+        }
+    }
+
+    /// Flow uniformity factor: 1.0 = perfect even distribution, lower = more center-biased
+    var flowUniformity: Double {
+        switch self {
+        case .standard: return 0.70
+        case .ims:      return 0.92
+        case .decent:   return 0.85
+        case .none:     return 0.50
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .standard: return "Factory-style screen with fewer, larger holes. Adequate flow distribution."
+        case .ims:      return "Precision-machined with many fine holes for highly uniform water distribution."
+        case .decent:   return "Stock Decent shower screen. Good balance of uniformity and durability."
+        case .none:     return "No shower screen — water enters directly from the group head. Very uneven distribution."
+        }
+    }
+}
+
 // MARK: - Simulation Parameters
 
 struct PuckParameters {
@@ -83,6 +143,7 @@ struct PuckParameters {
     var waterTempC: Double = 93.0          // °C
     var distributionQuality: Double = 0.85 // 0-1 (1 = perfect WDT)
     var basket: BasketSpec = .default
+    var showerScreen: ShowerScreenType = .decent
 
     // Derived: puck height (mm) from dose, density, basket geometry
     var puckHeightMM: Double {
@@ -277,9 +338,16 @@ struct PuckCFDSolver {
                     localK *= max(0.55, 1.0 + screenProximity * 0.45 * ringPhase)
                 }
 
-                // Top entry loosening: water impact disrupts surface packing
+                // Top entry: shower screen uniformity affects surface packing.
+                // A poor screen concentrates flow at center → more disruption.
+                // A precision screen distributes evenly → less disturbance.
                 if zNorm < 0.06 {
-                    localK *= 1.0 + 0.18 * (1.0 - zNorm / 0.06)
+                    let screenUniformity = params.showerScreen.flowUniformity
+                    // Base disruption scaled by how uneven the screen flow is
+                    let baseDisruption = 0.08 + 0.20 * (1.0 - screenUniformity)
+                    // Center-biased disruption for non-uniform screens
+                    let centerBias = rNorm < 0.35 ? (1.0 - screenUniformity) * 0.25 * (1.0 - rNorm / 0.35) : 0.0
+                    localK *= 1.0 + (baseDisruption + centerBias) * (1.0 - zNorm / 0.06)
                 }
 
                 // Distribution quality noise
