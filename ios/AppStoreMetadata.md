@@ -6,7 +6,7 @@
 
 **App Name:** Good Espresso
 
-**Subtitle:** Control Your Decent Machine
+**Subtitle:** Simulate & Control Decent Espresso
 
 **Category:** Food & Drink (Primary), Utilities (Secondary)
 
@@ -33,6 +33,12 @@ Edit any profile with a tap. Duplicate & customize built-in profiles or create y
 • Pulse-Brew Tea
 Experience traditional gongfu-style tea brewing with innovative pulse profiles. The basket fills, pressure opens the valve, then alternating steep and pulse cycles extract maximum flavor.
 
+• 3D Puck Simulation — NEW
+Visualize what happens inside your espresso puck during extraction. GPU-accelerated computational fluid dynamics shows pressure, flow, and extraction in real-time 3D. Adjust grind size, dose, tamp pressure, temperature, and more to see how each variable affects your shot.
+
+• Advanced Analytics — NEW
+12-card analytics dashboard with shot scoring, extraction metrics, and trend tracking across your shot history.
+
 • Shot History
 Review past extractions with detailed charts and data. Rate your shots and track your progress over time.
 
@@ -54,7 +60,28 @@ REQUIREMENTS:
 ### Keywords
 
 ```
-espresso, coffee, decent, brewing, barista, extraction, pressure, profiling, tea, macOS
+espresso, coffee, decent, brewing, simulation, puck, extraction, pressure, profiling, 3D
+```
+
+### What's New (Version 1.2)
+
+```
+NEW IN 1.2:
+
+• 3D Puck Simulation
+Interactive computational fluid dynamics simulation of espresso extraction. See pressure gradients, flow patterns, and extraction fronts inside your puck — rendered in real-time with Metal GPU acceleration. Adjust grind size, dose, tamp pressure, brew pressure, water temperature, bean density, moisture, and distribution uniformity.
+
+• Shower Screen & Basket Configuration
+Configure showerhead hole density, hole diameter, and distribution pattern. See how different shower screens affect water distribution and puck saturation.
+
+• Advanced Analytics Dashboard
+12 customizable analytics cards including shot scoring, extraction metrics, and trend analysis across your shot history.
+
+• Performance Improvements
+Adaptive simulation resolution, optimized Metal shader pipeline, and reduced GPU overhead for smoother 3D visualization on all devices.
+
+• Bug Fixes
+Fixed Metal rendering crashes on older devices, improved cross-platform stability, and resolved macOS app icon display issues.
 ```
 
 ### What's New (Version 1.1)
@@ -105,10 +132,11 @@ https://github.com/goodespresso/app/blob/main/PRIVACY.md
 
 ### iPhone 6.7" Display (iPhone 15 Pro Max)
 1. **Home Screen** - Connected state showing machine status and chart
-2. **Control Screen** - Live extraction with real-time chart
-3. **Profiles Screen** - List of espresso and tea profiles
-4. **Profile Detail** - Detailed view of a profile with Edit button visible
-5. **History Screen** - Shot history with ratings
+2. **Puck Simulation** - 3D puck visualization with extraction heatmap
+3. **Control Screen** - Live extraction with real-time chart
+4. **Profiles Screen** - List of espresso and tea profiles
+5. **Profile Detail** - Detailed view of a profile with Edit button visible
+6. **Analytics Dashboard** - Analytics cards with shot scoring
 
 ### iPhone 6.5" Display (iPhone 14 Plus)
 - Same 5 screenshots
@@ -139,12 +167,13 @@ Not applicable - app uses Bluetooth to connect to physical hardware.
 This app requires a Decent espresso machine to demonstrate full functionality. The app will show a "Not Connected" state without the physical machine.
 
 Key features that can be reviewed without hardware:
-1. Profile browsing and editing (Profiles tab)
-2. Duplicate & Edit flow on any profile
-3. Legal disclaimers (shown on first launch)
-4. Settings and preferences
-5. App navigation: tab bar on iPhone, sidebar on iPad/Mac
-6. Window resizing behavior on Mac
+1. 3D Puck Simulation (Analytics tab > Puck Simulation) — fully functional without machine
+2. Analytics dashboard (Analytics tab) — shows sample data
+3. Profile browsing and editing (Profiles tab)
+4. Duplicate & Edit flow on any profile
+5. Settings and preferences
+6. App navigation: tab bar on iPhone, sidebar on iPad/Mac
+7. Window resizing behavior on Mac
 
 The app is an open-source community project for controlling Decent espresso machines via Bluetooth. It does not collect any user data and stores all information locally on the device.
 ```
@@ -240,8 +269,8 @@ For questions about this privacy policy, please open an issue on our GitHub repo
 - [ ] App icon (1024x1024 PNG, no alpha)
 - [ ] Screenshots for all required device sizes (including iPad sidebar layout)
 - [ ] Mac Catalyst screenshots showing sidebar navigation
-- [ ] App description updated for v1.1
-- [ ] What's New text updated for v1.1
+- [ ] App description updated for v1.2
+- [ ] What's New text updated for v1.2
 - [ ] Keywords updated
 - [ ] Support URL active
 - [ ] Privacy Policy URL active
@@ -252,7 +281,7 @@ For questions about this privacy policy, please open an issue on our GitHub repo
 - [ ] Build uploaded via Xcode/Transporter
 - [ ] Export compliance answered (No encryption = exempt)
 - [ ] Content rights declared
-- [ ] Version set to 1.1.0, build 2
+- [ ] Version set to 1.2.0, build 3
 
 ---
 
@@ -268,7 +297,7 @@ When asked about encryption:
 ## Build & Upload Process
 
 1. **In Xcode:**
-   - Verify version 1.1.0, build 2
+   - Verify version 1.2.0, build 3
    - Select "Any iOS Device (arm64)"
    - Product > Archive
 
@@ -282,8 +311,8 @@ When asked about encryption:
 3. **In App Store Connect:**
    - Wait for build processing (5-30 minutes)
    - Select build for submission
-   - Update "What's New" text for v1.1
-   - Update description if needed
+   - Update "What's New" text for v1.2
+   - Update description with new features
    - Submit for review
 
 ---
